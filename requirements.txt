@@ -4,6 +4,7 @@
 # langchain-openai==0.2.9
 # langserve[all]==0.3.0
 # langsmith==0.1.143
+langchain_openai
 langchain
 langchain_community
 pymilvus
