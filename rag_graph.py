@@ -14,6 +14,10 @@ from typing import Annotated, Any, Optional
 import json
 import logging
 from langgraph.types import Send
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AnyMessage
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +48,6 @@ Provide a professional, empathetic response that:
 3. Suggests practical next steps or resources if relevant
 4. Maintains professional boundaries while showing care
 
-A Building will be set on fire if you don't condense your words or information into within 100 words or less.
 Response:"""
 
 RAG_CONTEXT_PROMPT = """You are an experienced and empathetic social worker. Use the following retrieved information 
@@ -63,7 +66,6 @@ Provide a response that:
 4. Suggests specific resources or next steps when appropriate
 5. Acknowledges any limitations in the information provided
 
-A Building will be set on fire if you don't condense your words or information into within 100 words or less.
 Response:"""
 
 
@@ -84,6 +86,7 @@ Create a unified response that:
 5. Preserves the professional social work perspective
 
 A Building will be set on fire if you don't condense your words or information into within 100 words or less.
+
 Response:"""
 
 GRADER_PROMPT = """You are an experienced social worker evaluating the relevance of information for helping clients. 
@@ -132,7 +135,7 @@ Format your response exactly like this:
 # Define the state
 class AgentState(TypedDict):
     question: str
-    conversation_history: str
+    conversation_history: Annotated[list[AnyMessage], add_messages]
     domain_filter: str
     direct_response: Optional[Annotated[list, operator.add]] 
     rag_response: Optional[Annotated[list, operator.add]] 
@@ -154,7 +157,7 @@ def get_vector_store():
         }
     )
 
-def should_use_rag(state: AgentState) -> AgentState:
+def should_use_rag(state: AgentState)  :
     """Determine if RAG should be used based on the question"""
     question = state["question"].lower()
     
@@ -166,10 +169,11 @@ def should_use_rag(state: AgentState) -> AgentState:
         "policy", "regulation", "law"
     ]
     
-    state["should_rag"] = any(keyword in question for keyword in factual_keywords)
-    return state
+    # state["should_rag"] = any(keyword in question for keyword in factual_keywords)
+    # state["conversation_history"] = [HumanMessage(content=question)]
+    return {"should_rag": any(keyword in question for keyword in factual_keywords), "conversation_history": [HumanMessage(content=question)]}
 
-def direct_response_social_worker(state: AgentState) -> AgentState:
+def direct_response_social_worker(state: AgentState):
     """Generate a direct response using the social worker prompt"""
     llm = ChatOpenAI(temperature=0.7)
     prompt = PromptTemplate(
@@ -186,7 +190,7 @@ def direct_response_social_worker(state: AgentState) -> AgentState:
     state["direct_response"] = response
     return {"direct_response": [response]}
 
-def retrieve_and_generate(state: AgentState) -> AgentState:
+def retrieve_and_generate(state: AgentState):
     """Retrieve documents and generate RAG response"""
     # Initialize vector store
     vector_store = get_vector_store()
@@ -199,11 +203,11 @@ def retrieve_and_generate(state: AgentState) -> AgentState:
         }
     )
     docs = retriever.get_relevant_documents(state["question"])
-    print(";;;;;;",docs)
+    # print(";;;;;;",docs)
     # state["retrieved_docs"] = docs
     return {"retrieved_docs": docs}
 
-def grader_docs(state: AgentState) -> AgentState:
+def grader_docs(state: AgentState) :
     """Grade documents based on relevance to the question"""
     try:
         doc = state["retrieved_doc"]
@@ -251,10 +255,10 @@ def grader_docs(state: AgentState) -> AgentState:
         logger.error(f"Error in grader_docs: {str(e)}")
         return {"graded_docs": []}
 
-def continue_to_grader(state: AgentState) -> AgentState:
+def continue_to_grader(state: AgentState) :
     return [Send("grader_docs",{"retrieved_doc":d, "question": state["question"]}) for d in state["retrieved_docs"]]
 
-def generate_context(state: AgentState) -> AgentState:
+def generate_context(state: AgentState):
     # Generate context
     
     docs = state["graded_docs"]
@@ -304,7 +308,7 @@ def generate_context(state: AgentState) -> AgentState:
     # print(docs_string)
     return {"rag_response": [rag_response], "retrieved_context": [docs_string], "relevant_docs": relevant_docs}
 
-def merge_responses(state: AgentState) -> AgentState:
+def merge_responses(state: AgentState):
     """Merge direct and RAG responses"""
     if not state.get("rag_response"):
         state["final_response"] = state["direct_response"]
@@ -322,10 +326,11 @@ def merge_responses(state: AgentState) -> AgentState:
         rag_response=state["rag_response"]
     )
     
-    state["final_response"] = final_response
-    return state
+    # state["final_response"] = final_response
+    # state["conversation_history"] = [AIMessage(content=final_response)]
+    return {"final_response": [final_response], "conversation_history": [AIMessage(content=final_response)]}
 
-def pass_state(state: AgentState) -> AgentState:
+def pass_state(state: AgentState):
     return {"rag_response":[""]}
 
 def create_graph() -> StateGraph:
@@ -369,66 +374,5 @@ def create_graph() -> StateGraph:
     workflow.add_edge("merge_responses", END)
     
     return workflow.compile()
-
-if __name__ == "__main__":
-    # Create the graph
-    graph = create_graph()
     
-    # Test questions
-    test_cases = [
-        {
-            "question": "What resources are available for elderly care?",
-            "domain": "financial",
-            "conversation_history": ""
-        },
-        {
-            "question": "what benefits do veterans have?",
-            "domain": "financial",
-            "conversation_history": ""
-        },
-        {
-            "question": "I need help with mental health services. What's available?",
-            "domain": "financial",
-            "conversation_history": ""
-        },
-        {
-            "question": "I'm feeling sad.",
-            "domain": "financial",
-            "conversation_history": ""
-        },
-    ]
-    
-    # Run test cases
-    for case in test_cases:
-        print(f"\nQuestion: {case['question']}")
-        print(f"Domain: {case['domain']}")
-        print("-" * 80)
-        
-        # try:
-            # Initialize state
-        state = AgentState(
-            question=case["question"],
-            conversation_history=case["conversation_history"],
-            domain_filter=case["domain"],
-            direct_response=None,
-            rag_response=None,
-            retrieved_context=None,
-            retrieved_docs=None,
-            final_response=None,
-            should_rag=None,
-            graded_docs=[]
-        )
-        # print(state)
-        
-        # Run the graph
-        for output in graph.stream(state):
-            for key, value in output.items():
-                print(f"Output from node '{key}':")
-                print("---")
-                print(value)
-            print("\n---\n")
-                
-        # except Exception as e:
-        #     print(f"Error processing question: {str(e)}")
-        #     continue
 graph = create_graph()

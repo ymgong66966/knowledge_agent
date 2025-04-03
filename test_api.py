@@ -5,7 +5,7 @@ from langgraph.types import Command
 import uuid
 
 # Configure your remote graph
-url = "https://ht-reflecting-ping-10-677e1982033a5253a9ef2ba8eb5c8752.us.langgraph.app"
+url = "https://ht-impressionable-sector-52-b5026c325a085ad2a0624561ba2fc6ff.us.langgraph.app"
 api_key = "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"
 graph_name = "agent"
 
@@ -22,15 +22,17 @@ print(f"Thread ID: {thread_id}")
 
 try:
     # Start conversation
-# print("\nStarting conversation...")
-    remote_graph.invoke({
-        "messages": [{"role": "user", "content": "I'm feeling sad"}]
-    }, config=config)
-# print("Initial result:", result)
+    print("\nStarting conversation...")
+    result = remote_graph.invoke({
+            "question": "I'm feeling sad",
+            "domain": "financial",
+            "conversation_history": ""
+        }, config=config)
+    print("Result:", result['final_response'])
+
     
 except GraphInterrupt as e:
-    # print(type(e))
-    print(e.args[0][0]['value']['your adress'])
+    print("Graph interrupted:", e.args[0])
 # print("\nInterrupted - Address needed")
 # # Resume with address using Command
 # result = remote_graph.invoke(
