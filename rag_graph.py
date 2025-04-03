@@ -17,8 +17,8 @@ from langgraph.types import Send
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langgraph.graph.message import add_messages
 from langchain_core.messages import AnyMessage
-
-
+import asyncio
+from langgraph.checkpoint.memory import MemorySaver
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -146,18 +146,9 @@ class AgentState(TypedDict):
     relevant_docs: Optional[Annotated[List[Document], operator.add]]
     final_response: str | None
     should_rag: bool | None
-def get_vector_store():
-    """Initialize and return the Zilliz vector store"""
-    return Zilliz(
-        embedding_function=OpenAIEmbeddings(),
-        collection_name="general_rag",
-        connection_args={
-            "uri": os.getenv("ZILLIZ_URI"),
-            "token": os.getenv("ZILLIZ_TOKEN"),
-        }
-    )
 
-def should_use_rag(state: AgentState)  :
+
+async def should_use_rag(state: AgentState)  :
     """Determine if RAG should be used based on the question"""
     question = state["question"].lower()
     
@@ -173,7 +164,7 @@ def should_use_rag(state: AgentState)  :
     # state["conversation_history"] = [HumanMessage(content=question)]
     return {"should_rag": any(keyword in question for keyword in factual_keywords), "conversation_history": [HumanMessage(content=question)]}
 
-def direct_response_social_worker(state: AgentState):
+async def direct_response_social_worker(state: AgentState):
     """Generate a direct response using the social worker prompt"""
     llm = ChatOpenAI(temperature=0.7)
     prompt = PromptTemplate(
@@ -190,10 +181,17 @@ def direct_response_social_worker(state: AgentState):
     state["direct_response"] = response
     return {"direct_response": [response]}
 
-def retrieve_and_generate(state: AgentState):
+async def retrieve_and_generate(state: AgentState):
     """Retrieve documents and generate RAG response"""
     # Initialize vector store
-    vector_store = get_vector_store()
+    vector_store = Zilliz(
+        embedding_function=OpenAIEmbeddings(),
+        collection_name="general_rag",
+        connection_args={
+            "uri": os.getenv("ZILLIZ_URI"),
+            "token": os.getenv("ZILLIZ_TOKEN"),
+        }
+    )
     
     # Retrieve documents
     retriever = vector_store.as_retriever(
@@ -207,7 +205,7 @@ def retrieve_and_generate(state: AgentState):
     # state["retrieved_docs"] = docs
     return {"retrieved_docs": docs}
 
-def grader_docs(state: AgentState) :
+async def grader_docs(state: AgentState) :
     """Grade documents based on relevance to the question"""
     try:
         doc = state["retrieved_doc"]
@@ -255,10 +253,10 @@ def grader_docs(state: AgentState) :
         logger.error(f"Error in grader_docs: {str(e)}")
         return {"graded_docs": []}
 
-def continue_to_grader(state: AgentState) :
+async def continue_to_grader(state: AgentState) :
     return [Send("grader_docs",{"retrieved_doc":d, "question": state["question"]}) for d in state["retrieved_docs"]]
 
-def generate_context(state: AgentState):
+async def generate_context(state: AgentState):
     # Generate context
     
     docs = state["graded_docs"]
@@ -308,7 +306,7 @@ def generate_context(state: AgentState):
     # print(docs_string)
     return {"rag_response": [rag_response], "retrieved_context": [docs_string], "relevant_docs": relevant_docs}
 
-def merge_responses(state: AgentState):
+async def merge_responses(state: AgentState):
     """Merge direct and RAG responses"""
     if not state.get("rag_response"):
         state["final_response"] = state["direct_response"]
@@ -330,7 +328,7 @@ def merge_responses(state: AgentState):
     # state["conversation_history"] = [AIMessage(content=final_response)]
     return {"final_response": [final_response], "conversation_history": [AIMessage(content=final_response)]}
 
-def pass_state(state: AgentState):
+async def pass_state(state: AgentState):
     return {"rag_response":[""]}
 
 def create_graph() -> StateGraph:
@@ -372,7 +370,7 @@ def create_graph() -> StateGraph:
     
     # Add final edge
     workflow.add_edge("merge_responses", END)
-    
-    return workflow.compile()
-    
+    checkpointer = MemorySaver()
+    return workflow.compile(checkpointer=checkpointer)
+
 graph = create_graph()
