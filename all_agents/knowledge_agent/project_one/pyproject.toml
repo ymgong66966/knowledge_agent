@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "knowledge-gen"
+version = "0.0.1"
+description = "An excellent agent build for LangGraph cloud."
+authors = ["Polly the parrot <1223+polly@users.noreply.github.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = ">=3.9.0,<3.13"
+langgraph = "^0.2.0"
+langchain-openai = ">=0.1.17"
+langchain-community = ">=0.2.11"
+pymilvus = ">=0.1.17"
+openai = ">=0.1.17"
+tiktoken = ">=0.1.17"
+google-genai = ">=0.1.17"
+langchain = ">=0.1.17"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

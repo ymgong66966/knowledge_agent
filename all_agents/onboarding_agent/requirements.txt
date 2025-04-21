@@ -1,0 +1,6 @@
+langchain
+langchain_community
+pymilvus
+openai
+tiktoken
+google-genai 
