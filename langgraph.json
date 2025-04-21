@@ -1,5 +1,5 @@
 {
-  "dependencies": ["./all_projects/knowledge_agent/project_one","./all_projects/onboarding_agent"],
+  "dependencies": ["./all_agents/knowledge_agent/project_one","./all_agents/onboarding_agent"],
   "graphs": {
     "my_first_agent": "all_agents/knowledge_agent/project_one/knowledge_gen/main.py:graph",
     "my_second_agent": "all_agents/onboarding_agent/project_two/main.py:graph"
