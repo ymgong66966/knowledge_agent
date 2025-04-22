@@ -970,7 +970,7 @@ def create_graph():
     builder.add_conditional_edges("router_node", lambda x: x.route_node, {"assess_mental": "assess_mental", "parse_response": "parse_response"})
     builder.add_conditional_edges("assess_mental", lambda x: x.next_step, {END: END, "completed_whole": "completed_whole"})
     builder.add_edge("completed_whole", END)
-    builder.add_edge("completed_onboarding", "assess_mental")
+    builder.add_edge("completed_onboarding", END)
 
     builder.add_edge("ask_to_repeat", END)
     builder.add_edge("ask_next_question", END)

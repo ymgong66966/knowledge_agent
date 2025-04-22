@@ -10,11 +10,11 @@ thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": thread_id}}
 print(f"Thread ID: {thread_id}")
 
-async def main():
+def main():
     # Configure your remote graph
     url = "https://ht-impressionable-sector-52-b5026c325a085ad2a0624561ba2fc6ff.us.langgraph.app"
     api_key = "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"
-    graph_name = "agent"
+    graph_name = "onboarding_agent"
 
     # Initialize clients with API key
     client = get_client(url=url, api_key=api_key)
@@ -23,14 +23,38 @@ async def main():
 
     # Start conversation
     try:
-        result = await remote_graph.ainvoke({
-                "question": "what do you know about veteran benefits?",
-                "domain": "financial",
-            }, config=config)
-        print(result['final_response'])
+        result = remote_graph.invoke({
+  "node": "root",
+  "tasks": [],
+  "chat_history": [],
+  "real_chat_history": [
+    {
+      "type": "human",
+      "content": "He is living in an apartment, alone by himself"
+    }
+  ],
+  "last_step": "start",
+  "current_tree": "HousingAssessmentTree",
+  "care_recipient": {
+    "address": "11650 National Boulevard, Los Angeles, California 90064, United States",
+    "dateOfBirth": "1954-04-11",
+    "dependentStatus": "Not a child/dependent",
+    "firstName": "Yiming",
+    "gender": "Male",
+    "isSelf": "false",
+    "lastName": "Gong",
+    "legalName": "Yiming Gong",
+    "pronouns": "he/him/his",
+    "relationship": "dad",
+    "veteranStatus": "Veteran"
+  }
+}, config=config)
+        print(result["question"])
     except GraphInterrupt as e:
         print(e)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # asyncio.run(main())
+    main()
+
 
