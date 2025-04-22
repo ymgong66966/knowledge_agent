@@ -863,7 +863,7 @@ def completed_onboarding(state: GraphState):
     new_history = state.real_chat_history + [AIMessage(content="Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?")]
     return {"real_chat_history": new_history, "question": "Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?", "chat_history": state.chat_history + [AIMessage(content="Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?")], "route": "mental"}
 
-def completed_whole(state: GraphState):
+async def completed_whole(state: GraphState):
     assess_score = state.assessment_score
     if assess_score < 5:
         new_history = state.real_chat_history + [AIMessage(content="You appear to be managing your stress well but it is important to maintain good self-care and utilize your support network. Stay connected to your care team for support and use the Care Navigator to find resources you may need.")]
@@ -945,7 +945,7 @@ def ask_next_question(state: GraphState, tree_dict: dict):
 def create_graph():
     memory = MemorySaver()
     builder = StateGraph(GraphState)
-    tree_dict = {"HousingAssessmentTree":HousingAssessmentTree(), "VeteranAssessmentTree":VeteranAssessmentTree()}
+    tree_dict = {"HousingAssessmentTree":HousingAssessmentTree(), "Medic" "VeteranAssessmentTree":VeteranAssessmentTree(), "MedicareAssessmentTree":MedicareAssessmentTree(), "LegalDocumentsTree":LegalDocumentsTree(), "EndOfLifeCareTree":EndOfLifeCareTree()}
     mental_health_questions_ls = ["Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?", "Have you been sleeping more or less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can’t stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
     care_recipient = {"address": "11650 National Boulevard, Los Angeles, California 90064, United States",
     "dateOfBirth": "1954-04-11",

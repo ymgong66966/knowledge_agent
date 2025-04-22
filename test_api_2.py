@@ -6,7 +6,7 @@ import uuid
 import asyncio
 from langchain_core.messages import HumanMessage
 # Create a new thread ID
-thread_id = "8f809af5-0abf-418f-9f62-2a8056331fca"
+thread_id = "66126da4-74ee-4222-a948-bf22fbc211e5"
 
 config = {"configurable": {"thread_id": thread_id}}
 print(f"Thread ID: {thread_id}")
@@ -28,11 +28,12 @@ def main():
         # print(state.values)
         
         # Prepare the new message
-        new_message = HumanMessage(content="No he doesn't have benefits")
+        new_message = HumanMessage(content="No he is not ")
         # branch_config = remote_graph.update_state(config, {"real_chat_history": state.values["real_chat_history"] + [new_message]})
         # Update both real_chat_history and chat_history
         updated_state = dict(state.values)  # Make a copy of the current state
-        print("real_chat_history: ", state.values["real_chat_history"])
+        print("updated_state: ", updated_state)
+        # print("real_chat_history: ", state.values["real_chat_history"])
         print("chat_history: ", updated_state["chat_history"])
         updated_state["real_chat_history"] = state.values["real_chat_history"] + [new_message]
         # updated_state["chat_history"] = state.values["chat_history"] + [new_message]
