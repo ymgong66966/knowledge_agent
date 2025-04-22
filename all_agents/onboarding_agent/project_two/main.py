@@ -501,7 +501,8 @@ class HousingAssessmentTree:
             HousingAssessmentNode(
                 options=None,
                 question="",  # No additional question
-                tasks=["Monitor In-Home or In-Facility Care"]
+                tasks=["Monitor In-Home or In-Facility Care"],
+                leaf_node="leaf"
             ),
             "receive_care_yes"
         )
@@ -680,6 +681,7 @@ def parse_response(state: GraphState, tree_dict: dict):
     # print(state["node"], "////////")
     tree = tree_dict[state.current_tree]
     client = genai.Client(api_key="AIzaSyCGUPJfjJdIn8vu78HD8wq9j-zdbWRy2mk")
+    print("node id", state.node)
     current_question = tree.get_node(state.node).question
     # print("Next Questions:", tree.get_node(state.node).next_questions)
     next_questions = tree.get_node(state.node).next_questions
@@ -701,8 +703,9 @@ def parse_response(state: GraphState, tree_dict: dict):
         options = [tree.get_node(state.node).path]
     # print("options", options)
 
-
+    print("all_questions", all_questions)
     prompt = f"""System: we have a series of questions to ask the user to help them onboard. Your input contains four things: user response, current question, options, and later questions. Your job is to understand the user's response to your current question, and return one of the options you are given that best represent the user's response. At the same time, you need to look at the later questions and return a "has_additional_info" flag indicating if there is additional information in the user's response that can answer later questions. The "has_additional_info" is either "True" or "False". If the user's response has information to answer one of the later questions, then you must return "True" as the value for "has_additional_info". If the user's response has no information to answer any of the later questions, then you must return "False" as the value for "has_additional_info". 
+    Important: never return "answer not found" as the option when the user response is a simple yes or no, instead return the option that best represent the user's response.
 
     Note that there are three scenarios:
     1. The user's response is sufficient for you to pick one option as answer to the current question.
@@ -814,7 +817,7 @@ def parse_response(state: GraphState, tree_dict: dict):
         # update the current node
         node_id = tree.get_node(state.node).options[parsed_option]
         current_node = tree.get_node(node_id)
-        # print("current_node", node_id)
+        print("current_node", node_id)
         # print("#####",current_node.options)
         while current_node.options is None:
             if current_node.tasks != None:
@@ -834,11 +837,11 @@ def parse_response(state: GraphState, tree_dict: dict):
                 current_question = ""
             idx = list(tree_dict.keys()).index(state.current_tree) + 1 
             if idx < len(tree_dict):
+                print("end of tree:", current_question)
                 current_tree_name = list(tree_dict.keys())[idx]
-                return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "real_chat_history":real_chat_history}
+                return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "real_chat_history":real_chat_history, "tasks": tasks}
             else:
-
-                return {"next_step": "completed_onboarding", "question": current_question,"chat_history": chat_history, "real_chat_history":real_chat_history}
+                return {"next_step": "completed_onboarding", "question": current_question,"chat_history": chat_history, "real_chat_history":real_chat_history, "tasks": tasks}
 
         current_question = current_node.question
         options = current_node.options
@@ -857,7 +860,7 @@ def parse_response(state: GraphState, tree_dict: dict):
 
 def ask_to_repeat(state: GraphState):
     new_history = state.real_chat_history + [AIMessage(content="I'm sorry, I didn't understand that. Please try again.")]
-    return {"real_chat_history": new_history}
+    return {"real_chat_history": new_history, "question": "I'm sorry, I didn't understand that. Please try again.", "next_step": None}
         
 def completed_onboarding(state: GraphState):
     new_history = state.real_chat_history + [AIMessage(content="Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?")]
@@ -887,16 +890,14 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     # current_question = "Is there any immediate need I can support you with right now in regards to @name's care?"
     # chat_history = [AIMessage(content="Is your dad eligible for Medicaid? Medicaid is a government program that provides healthcare coverage for low-income individuals.", role="assistant"), HumanMessage(content="Yes, he is", role="user")]
     # chat_history = []
-    if state.node == "root":
-        current_question = state.question + " " + tree_dict[state.current_tree].get_node(state.node).question
-    else:
-        current_question = tree_dict[state.current_tree].get_node(state.node).question
+    current_question = tree_dict[state.current_tree].get_node(state.node).question
+    print("raw question: ", current_question)
     real_chat_history = state.real_chat_history
     ask_template = f"""System: your job is to ask the question to the care giver to help them onboard. Your input includes a question, the chat history, and the care recipient information. 
 
     You need to undertstand the relationship between the care giver you are talking to and the care recipient. Refer to the care recipient based on the relationship. If the relationship is "self" then refer to the care recipient as you. Also look at the background information in chat history, formulate the question accordingly.
-
-    Here are some example inputs:
+    #####
+    Example inputs 1:
     The care recipient information:
     {{
   "address": "11650 National Boulevard, Los Angeles, California 90064, United States",
@@ -914,7 +915,7 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     Input question: Great. Does @name need more support or care than is currently being provided by those he/she lives with?
     Chat history: [AIMessage(content="Does your brother live in this home alone or with others?", role="assistant"), HumanMessage(content="He is living with my family", role="user")]
 
-    The example output:
+    Example output 1:
     The output question you need to ask is: Does your brother need more support or care than is currently being provided by your family?
 
     #### Below is the real input. 
@@ -938,6 +939,9 @@ def ask_next_question(state: GraphState, tree_dict: dict):
 
     # print(response.text)
     generated_question = json.loads(response.text).get("question")
+    print("generated question: ", generated_question)
+    if state.node == "root":
+        generated_question = state.question + "\n" + generated_question
     real_chat_history = state.real_chat_history
     real_chat_history.append(AIMessage(content=generated_question))
     return {"question": generated_question, "real_chat_history": real_chat_history, "last_step":"start"}
