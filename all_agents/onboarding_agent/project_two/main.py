@@ -814,7 +814,7 @@ def parse_response(state: GraphState, tree_dict: dict):
         parsed_option = response_dict["option"]
         has_additional_info = response_dict["has_additional_info"]
         chat_history += [AIMessage(content=current_question),HumanMessage(content=parsed_option)]
-        real_chat_history += [AIMessage(content=current_question),HumanMessage(content=user_response)]
+        # real_chat_history += [AIMessage(content=current_question),HumanMessage(content=user_response)]
         # update the current node
         node_id = tree.get_node(state.node).options[parsed_option]
         current_node = tree.get_node(node_id)
@@ -840,16 +840,16 @@ def parse_response(state: GraphState, tree_dict: dict):
             if idx < len(tree_dict):
                 print("end of tree:", current_question)
                 current_tree_name = list(tree_dict.keys())[idx]
-                return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "real_chat_history":real_chat_history, "tasks": tasks}
+                return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "tasks": tasks}
             else:
-                return {"next_step": "completed_onboarding", "question": current_question,"chat_history": chat_history, "real_chat_history":real_chat_history, "tasks": tasks}
+                return {"next_step": "completed_onboarding", "question": current_question,"chat_history": chat_history, "tasks": tasks}
 
         current_question = current_node.question
         options = current_node.options
         if has_additional_info.lower() == "true":
-            return {"node": node_id, "chat_history": chat_history, "tasks": tasks, "options": options, "question":current_question, "next_step": "parse_response", "last_step": "parse_response", "real_chat_history":real_chat_history}
+            return {"node": node_id, "chat_history": chat_history, "tasks": tasks, "options": options, "question":current_question, "next_step": "parse_response", "last_step": "parse_response"}
         else:
-            return {"node": node_id, "chat_history": chat_history, "tasks": tasks, "options": options, "question":current_question, "next_step": "ask_next_question", "last_step": "parse_response", "real_chat_history":real_chat_history}
+            return {"node": node_id, "chat_history": chat_history, "tasks": tasks, "options": options, "question":current_question, "next_step": "ask_next_question", "last_step": "parse_response"}
         # the node can be any node in the tree. Need to check if the node has options
     # if: 1. the node has options, then it must has question. then options = node.options
     # else: 2. the node has no options, then it must has path. then options = node.path
