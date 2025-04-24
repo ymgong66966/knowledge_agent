@@ -25,19 +25,16 @@ def main():
     # Start conversation
     try:
         state = remote_graph.get_state(config)
-        # print(state.values)
-        
         # Prepare the new message
-        new_message = HumanMessage(content="I think he is eligible")
-        # branch_config = remote_graph.update_state(config, {"real_chat_history": state.values["real_chat_history"] + [new_message]})
+        new_message = HumanMessage(content="No")
         # Update both real_chat_history and chat_history
         updated_state = dict(state.values)  # Make a copy of the current state
         print("updated_state: ", updated_state)
-        # print("real_chat_history: ", state.values["real_chat_history"])
+        # the message list
         print("chat_history: ", updated_state["chat_history"])
+
+
         updated_state["real_chat_history"] = state.values["real_chat_history"] + [new_message]
-        # updated_state["chat_history"] = state.values["chat_history"] + [new_message]
-        # Optionally, update 'last_step' or 'next_step' if needed
         
         # Now invoke the graph with the updated state
         new_thread_id = str(uuid.uuid4())

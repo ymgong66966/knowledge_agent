@@ -44,6 +44,7 @@ class GraphState(BaseModel):
     assessment_score: Optional[int] = Field(default=0)
     assessment_answer: Optional[list[AnyMessage]] = Field(default=[])
     care_recipient: Optional[dict] = Field(default={})
+    completed_whole_process: Optional[bool] = Field(default=False)
 
 class EndOfLifeCareNode:
     def __init__(self, question, options=None, tasks=None, condition=None, path=None, node_id=None, leaf_node=None, next_questions=None):
@@ -881,7 +882,7 @@ async def completed_whole(state: GraphState):
         question = "Your answers indicate that you may be experiencing a high level of caregiver burnout. Check in with your own medical provider or primary care doctor if you need more support, and you can ask your Care Navigator for assistance with finding additional resources such as support groups or individual therapists."
         chat_history = state.chat_history + [AIMessage(content="Your answers indicate that you may be experiencing a high level of caregiver burnout. Check in with your own medical provider or primary care doctor if you need more support, and you can ask your Care Navigator for assistance with finding additional resources such as support groups or individual therapists.")]
 
-    return {"real_chat_history": new_history, "question":question, "chat_history": chat_history}
+    return {"real_chat_history": new_history, "question":question, "chat_history": chat_history, "completed_whole_process": True}
 
 def ask_next_question(state: GraphState, tree_dict: dict):
     # print(state["real_chat_history"], "\\\\\\\\\\")
