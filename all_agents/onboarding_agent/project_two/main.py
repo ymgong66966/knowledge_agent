@@ -894,6 +894,8 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     current_question = tree_dict[state.current_tree].get_node(state.node).question
     print("raw question: ", current_question)
     real_chat_history = state.real_chat_history
+    if state.node == "root":
+        current_question = state.question + "\n" + current_question
     ask_template = f"""System: your job is to ask the question to the care giver to help them onboard. Your input includes a question, the chat history, and the care recipient information. 
 
     You need to undertstand the relationship between the care giver you are talking to and the care recipient. Refer to the care recipient based on the relationship. If the relationship is "self" then refer to the care recipient as you. Also look at the background information in chat history, formulate the question accordingly.
@@ -919,6 +921,30 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     Example output 1:
     The output question you need to ask is: Does your brother need more support or care than is currently being provided by your family?
 
+    Example input 2:
+    The care recipient information:
+    {{
+  "address": "11650 National Boulevard, Los Angeles, California 90064, United States",
+  "dateOfBirth": "1968-03-12",
+  "dependentStatus": "Not a child/dependent",
+  "firstName": "Bruno",
+  "gender": "Male",
+  "isSelf": false,
+  "lastName": "Mars",
+  "legalName": "Bruno Mars",
+  "pronouns": "he/him/his",
+  "relationship": "Dad",
+  "veteranStatus": "Veteran"
+}}
+    Input question: It will be important to work with @name and an attorney to complete these documents as soon as possible. We will add this to your Task list with more instructions once the onboarding process is complete. Is @name eligible for Medicare? Medicare is a federal health insurance program for those aged 65 or older, or who have a qualifying disability or diagnosis of end-stage kidney disease or ALS. 
+
+    Chat history: [AIMessage(content="Does your dad have a will, living will, or power of attorney in place?", role="assistant"), HumanMessage(content="No he doesn't", role="user")]
+
+    Example output 2:
+     The output question you need to ask is: It will be important to work with your dad and an attorney to complete these documents as soon as possible. We will add this to your Task list with more instructions once the onboarding process is complete. Is your dad eligible for Medicare? Medicare is a federal health insurance program for those aged 65 or older, or who have a qualifying disability or diagnosis of end-stage kidney disease or ALS. 
+
+     Important Note: In the input question, if there are sentences before or after the question sentence, make sure to include them and polish them so that @name is replaced with proper language.
+
     #### Below is the real input. 
     The care recipient information:
     {care_recipient}
@@ -941,8 +967,6 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     # print(response.text)
     generated_question = json.loads(response.text).get("question")
     print("generated question: ", generated_question)
-    if state.node == "root":
-        generated_question = state.question + "\n" + generated_question
     real_chat_history = state.real_chat_history
     real_chat_history.append(AIMessage(content=generated_question))
     return {"question": generated_question, "real_chat_history": real_chat_history, "last_step":"start"}

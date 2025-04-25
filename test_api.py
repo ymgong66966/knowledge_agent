@@ -29,12 +29,17 @@ def main():
   "chat_history": [],
   "real_chat_history": [
     {
+      "type": "ai",
+      "content": "Does the care recipient live in a private residence home or in a care facility?"
+    },
+    {
       "type": "human",
       "content": "He is living in an apartment, alone by himself"
     }
   ],
   "last_step": "start",
   "current_tree": "HousingAssessmentTree",
+  "completed_whole_process": False,
   "care_recipient": {
     "address": "11650 National Boulevard, Los Angeles, California 90064, United States",
     "dateOfBirth": "1954-04-11",
@@ -49,7 +54,10 @@ def main():
     "veteranStatus": "Veteran"
   }
 }, config=config)
-        print(result["question"])
+        print("question: ", result["question"])
+        print("real_chat_history: ", result["real_chat_history"])
+        print("chat_history: ", result["chat_history"])
+        print("completed_whole_process: ", result["completed_whole_process"])
     except GraphInterrupt as e:
         print(e)
 
