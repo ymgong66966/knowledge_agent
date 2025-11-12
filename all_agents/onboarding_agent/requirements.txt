@@ -1,6 +1,9 @@
-langchain
-langchain_community
-pymilvus
-openai
-tiktoken
-google-genai 
+langchain==0.2.17
+langchain-community==0.2.19
+langchain-core==1.0.4
+langchain-text-splitters==0.2.4
+pymilvus==2.5.4
+openai==1.97.1
+tiktoken==0.8.0
+python-dotenv==1.1.0
+google-genai==1.9.0

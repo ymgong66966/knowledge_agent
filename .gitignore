@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+all_agents/onboarding_agent/langgraph.json
