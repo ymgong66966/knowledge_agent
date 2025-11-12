@@ -1841,7 +1841,7 @@ def completed_onboarding(state: GraphState):
     new_history = state.real_chat_history + [AIMessage(content="Have you been sleeping more or less often than usual? Yes, no, or sometimes?")]
     return {"real_chat_history": new_history, "question": "Have you been sleeping more or less often than usual? Yes, no, or sometimes?", "chat_history": state.chat_history + [AIMessage(content="Have you been sleeping more or less often than usual? Yes, no, or sometimes?")], "route": "mental", "mental_question": "Have you been sleeping more or less often than usual? Yes, no, or sometimes?"}
 
-async def short_completed(state: GraphState):
+async def short_completed_node(state: GraphState):
     new_history = state.real_chat_history + [AIMessage(content="Thank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!")]
     question = "Thank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!"
     chat_history = state.chat_history + [AIMessage(content="Thank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!")]
@@ -1988,9 +1988,9 @@ def create_graph():
     builder.add_node("router_node", routing_node)
     builder.add_node("completed_onboarding", completed_onboarding)
     builder.add_node("completed_whole", completed_whole)
-    builder.add_node("short_completed", short_completed)
+    builder.add_node("short_completed_node", short_completed_node)
     builder.add_edge(START, "router_node")
-    builder.add_conditional_edges("parse_response", lambda x: x.next_step, {"ask_to_repeat": "ask_to_repeat", "ask_next_question": "ask_next_question", "parse_response": "parse_response", "completed_onboarding": "completed_onboarding", "short_completed": "short_completed"})
+    builder.add_conditional_edges("parse_response", lambda x: x.next_step, {"ask_to_repeat": "ask_to_repeat", "ask_next_question": "ask_next_question", "parse_response": "parse_response", "completed_onboarding": "completed_onboarding", "short_completed": "short_completed_node"})
     builder.add_conditional_edges("router_node", lambda x: x.route_node, {"assess_mental": "assess_mental", "parse_response": "parse_response"})
     builder.add_conditional_edges("assess_mental", lambda x: x.next_step, {END: END, "completed_whole": "completed_whole"})
     builder.add_edge("completed_whole", END)
