@@ -7,7 +7,7 @@ license = "MIT"
 
 [tool.poetry.dependencies]
 python = ">=3.9.0,<3.13"
-langgraph = "^0.2.0"
+langgraph = "^0.4.10"
 langchain-openai = ">=0.1.17"
 langchain-community = ">=0.2.11"
 pymilvus = ">=0.1.17"
