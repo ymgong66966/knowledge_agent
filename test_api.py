@@ -4,11 +4,12 @@ from langgraph.errors import GraphInterrupt
 import uuid
 import os
 import asyncio
-# Create a new thread ID
-# thread_id = str(uuid.uuid4())
+from dotenv import load_dotenv
+load_dotenv()
 
-# config = {"configurable": {"thread_id": thread_id}}
-# print(f"Thread ID: {thread_id}")
+def simplify_messages(messages):
+    """Extract only content and type from messages"""
+    return [{"type": msg.get("type"), "content": msg.get("content")} for msg in messages]
 
 def main():
     # Configure your remote graph
@@ -25,45 +26,45 @@ def main():
     # Start conversation
     try:
         result = remote_graph.invoke({
-  "node": "root",
-  "tasks": [],
-  "chat_history": [],
-  "real_chat_history": [
-    {
-      "type": "ai",
-      "content": "Does the care recipient live in a private residence home or in a care facility?"
-    },
-    {
-      "type": "human",
-      "content": "He is living in an apartment, alone by himself"
-    }
-  ],
-  "last_step": "start",
-  "current_tree": "HousingAssessmentTree",
-  "completed_whole_process": False,
-  "care_recipient": {
-    "address": "11650 National Boulevard, Los Angeles, California 90064, United States",
-    "dateOfBirth": "1954-04-11",
-    "dependentStatus": "Not a child/dependent",
-    "firstName": "Yiming",
-    "gender": "Male",
-    "isSelf": "false",
-    "lastName": "Gong",
-    "legalName": "Yiming Gong",
-    "pronouns": "he/him/his",
-    "relationship": "dad",
-    "veteranStatus": "Veteran"
-  }
-}, config=config)
+            "node": "root",
+            "tasks": [],
+            "chat_history": [],
+            "veteranStatus": "Veteran",
+            "real_chat_history": [
+                {
+                    "type": "ai",
+                    "content": "Hello, @caregiverFirstName! Welcome to WithCare. I'm your AI Care Navigator trained by licensed clinicians to support you 24/7. How are you today?"
+                },
+                {
+                    "type": "human",
+                    "content": "I do not feel very good today. I feel a bit down"
+                }
+            ],
+            "last_step": "start",
+            "current_tree": "IntroAssessmentTree",
+            "care_recipient": {
+                "address": "11650 National Boulevard, Los Angeles, California 90064, United States",
+                "dateOfBirth": "1954-04-11",
+                "dependentStatus": "Not a child/dependent",
+                "firstName": "Yiming",
+                "gender": "Male",
+                "isSelf": "false",
+                "lastName": "Gong",
+                "legalName": "Yiming Gong",
+                "pronouns": "he/him/his",
+                "relationship": "dad",
+                "veteranStatus": "Veteran"
+            }
+        }, config=config)
+        print("thread_id: ", thread["thread_id"])
         print("question: ", result["question"])
-        print("real_chat_history: ", result["real_chat_history"])
-        print("chat_history: ", result["chat_history"])
-        print("completed_whole_process: ", result["completed_whole_process"])
+        print("real_chat_history: ", simplify_messages(result["real_chat_history"]))
+        print("chat_history: ", simplify_messages(result["chat_history"]))
+        print("current_tree: ", result.get("current_tree"))
+        print("last_step: ", result.get("last_step"))
     except GraphInterrupt as e:
         print(e)
 
 if __name__ == "__main__":
     # asyncio.run(main())
     main()
-
-

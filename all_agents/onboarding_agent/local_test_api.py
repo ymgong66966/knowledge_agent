@@ -50,7 +50,8 @@ def main():
                 "pronouns": "he/him/his",
                 "relationship": "dad",
                 "veteranStatus": "Veteran"
-            }
+            },
+            # "direct_record_answer": False
         }, config=config)
         
         print("\n" + "="*50)

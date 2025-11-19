@@ -1,20 +1,18 @@
 from google import genai
-from pydantic import BaseModel, create_model
+# from pydantic import BaseModel, create_model
+from langchain_core.pydantic_v1 import BaseModel, Field
 from typing import List, Optional, Type, TypedDict
 import os
 from dotenv import load_dotenv
 load_dotenv()
 from openai import OpenAI
 import random
-from pydantic import BaseModel
+# from pydantic import BaseModel
 from typing import TypedDict, Optional, Annotated, List
 from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from typing import Any
 from langgraph.checkpoint.memory import MemorySaver
-from typing import Dict
-from pydantic import Field
 import json
 from langchain_core.messages import AIMessage, AnyMessage
 # test
@@ -186,7 +184,7 @@ class EndOfLifeCareTree:
         
         # Root node
         self.root = self._register_node(EndOfLifeCareNode(
-            question="""Depending on @name’s diagnosis, it may be important to consider end-of-life planning so that they can remain comfortable with their wishes honored. \nEnd-of-life care can include hospice or palliative care, spiritual care, healthcare directive and conversations with family, medical providers, and even attorneys. \nIs @name in need of end-of-life care or planning support?""",
+            question="""Depending on @name’s diagnosis, it may be important to consider end-of-life planning so that they can remain comfortable with their wishes honored. \n\nEnd-of-life care can include hospice or palliative care, spiritual care, healthcare directive and conversations with family, medical providers, and even attorneys. \n\nIs @name in need of end-of-life care or planning support?""",
             options={
                 "Yes": "needs_support",
                 "No": "no_support_needed"
@@ -278,7 +276,7 @@ class LegalDocumentsAssessmentTree:
 
         d_root = self._register_node(LegalDocumentsNode(
             question=("With legal plans, it’s important to have the various documents organized in a secure place and "
-                      "shared with relevant parties including medical and financial institutions. Would you like support "
+                      "shared with relevant parties including medical and financial institutions. \n\n Would you like support "
                       "here organizing your documents and managing next steps?"),
             options={
                 "Yes": "d_yes_final",
@@ -868,26 +866,26 @@ class LiveSituationAssessmentTree:
 
         leaf_no_additional_support_needed = self._register_node(LiveSituationNode(
             question=("Okay I noted no additional support is needed right now. "
-                      "If @name’s care needs change, I’m always available to provide assistance."),
+                      "If @name’s care needs change, I’m always available to provide assistance.\n"),
             tasks=[],
             leaf_node="leaf"
         ), "leaf_no_additional_support_needed")
 
         leaf_unsure_revisit = self._register_node(LiveSituationNode(
-            question="No worries, we can always revisit this later.",
+            question="No worries, we can always revisit this later.\n",
             tasks=[],
             leaf_node="leaf"
         ), "leaf_unsure_revisit")
 
         leaf_unsure_general = self._register_node(LiveSituationNode(
-            question="That’s okay, we can revisit this at a future time.",
+            question="That’s okay, we can revisit this at a future time.\n",
             tasks=[],
             leaf_node="leaf"
         ), "leaf_unsure_general")
 
         leaf_skip = self._register_node(LiveSituationNode(
             question=("No worries. You are not required to answer anything you do not feel comfortable with. "
-                      "Let’s move on to the next question."),
+                      "Let’s move on to the next question.\n"),
             tasks=[],
             leaf_node="leaf"
         ), "leaf_skip")
@@ -1230,7 +1228,7 @@ class HospitalizationAssessmentTree:
         # =========================
         self.root = self._register_node(HospitalizationNode(
             question=("A hospitalization can cause a change in [@name’s]/[your] care needs. If this is relevant to you, "
-                      "I’d like to know if I can provide assistance and help prevent future hospitalizations.\n"
+                      "I’d like to know if I can provide assistance and help prevent future hospitalizations.\n\n"
                       "[Has @name]/[Have you] been hospitalized in the last 30 days? "
                       "Hospitalized means [@name/][you] stayed overnight and this does not count scheduled medical appointments or trips to urgent care"),
             options={
@@ -1404,7 +1402,7 @@ class ERVisitAssessmentTree:
         # =========================
         self.root = self._register_node(ERVisitNode(
             question=("An ER visit may be a sign that @name’s health needs are changing. I’d like to know how I can "
-                      "support you and help prevent future emergencies.\n"
+                      "support you and help prevent future emergencies.\n\n"
                       "Has @name visited the ER in the last 3 months? An ER visit means they went to the "
                       "emergency room, even if they were sent home the same day."),
             options={
@@ -1482,7 +1480,7 @@ class CopingAssessmentTree:
         # ---- Leaves / acknowledgments
         leaf_thanks_close = self._register_node(CopingNode(
             question=("Thank you, those are all of the questions I have. "
-                      "I’ll send a message to you soon about your care plan tasks and next steps for @name’s care. "),
+                      "I’ll send a message to you soon about your care plan tasks and next steps for @name’s care. You can exit now."),
             tasks=[],
             leaf_node="leaf"
         ), "leaf_thanks_close")
@@ -1589,6 +1587,7 @@ def assess_mental(state: GraphState, question_ls: list):
 
 
 def routing_node(state: GraphState):
+    print(state.route,"[[[[[[[[[[]]]]]]]]]]")
     if state.route == "mental":
         return {"route_node": "assess_mental"}
     else:
@@ -1609,10 +1608,8 @@ def parse_response(state: GraphState, tree_dict: dict):
             user_response = message.content + user_response
         elif isinstance(message, AIMessage):
             break
-    if state.short_completed:
-        return {"next_step": "short_completed", "chat_history": chat_history}
+
     if state.direct_record_answer:
-        
         if state.care_time != True:
             print("direct_record_answer")
             identify_task_prompt = f"""
@@ -1816,7 +1813,9 @@ def parse_response(state: GraphState, tree_dict: dict):
                 
                 return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "tasks": tasks, "direct_record_answer": direct_record_answer, "directly_ask": directly_ask}
             else:
-                return {"next_step": "completed_onboarding", "question": current_question,"chat_history": chat_history, "tasks": tasks, "direct_record_answer": direct_record_answer, "directly_ask": directly_ask}
+                ### last question: copyingassessmenttree
+                return {"next_step": "ask_next_question", "question": current_question, "tasks": tasks, "direct_record_answer": direct_record_answer, "directly_ask": directly_ask,"chat_history": state.chat_history + [AIMessage(content=current_question)], "route": "mental"}
+
 
         current_question = current_node.question
         options = current_node.options
@@ -1871,6 +1870,9 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     # current_question = "Is there any immediate need I can support you with right now in regards to @name's care?"
     # chat_history = [AIMessage(content="Is your dad eligible for Medicaid? Medicaid is a government program that provides healthcare coverage for low-income individuals.", role="assistant"), HumanMessage(content="Yes, he is", role="user")]
     # chat_history = []
+    if state.route == "mental" and state.question=="Do you have trouble concentrating throughout the day? Yes, no, or sometimes?":
+        return {"question": state.question,"mental_question": state.question, "real_chat_history": state.real_chat_history + [AIMessage(content=state.question)], "last_step":"start", "directly_ask": directly_ask}
+        
     directly_ask = False
     if state.directly_ask:
         current_question = state.question
@@ -1878,7 +1880,9 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     else:
         current_question = tree_dict[state.current_tree].get_node(state.node).question
         print("raw question: ", current_question)
-        if state.node == "root":
+        if state.route == "mental":
+            current_question = state.question 
+        elif state.node == "root":
             current_question = state.question + "\n" + current_question
     real_chat_history = state.real_chat_history
     ask_template = f"""System: your job is to ask the question to the care giver to help them onboard. Your input includes a question, the chat history, and the care recipient information. 
@@ -1936,7 +1940,7 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     The question is {current_question}.  
     Chat history: {real_chat_history}
     
-    Generate your output in the json format below, do not include any other text.
+    Generate your output in the json format below, do not include any other text. Important: if there are line breaks in the input, make sure to include it in the output.
     
     {{"question": ""}}
     """
@@ -1953,6 +1957,8 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     generated_question = json.loads(response.text).get("question")
     print("generated question: ", generated_question)
     real_chat_history.append(AIMessage(content=generated_question))
+    
+
     return {"question": generated_question, "real_chat_history": real_chat_history, "last_step":"start", "directly_ask": directly_ask}
 
 def create_graph():
@@ -1969,7 +1975,7 @@ def create_graph():
     "ERVisitAssessmentTree":ERVisitAssessmentTree(),
     "EndOfLifeCareTree":EndOfLifeCareTree(), 
     "CopingAssessmentTree":CopingAssessmentTree()}
-    mental_health_questions_ls = ["Have you been sleeping more or less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can’t stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
+    mental_health_questions_ls = ["Do you have trouble concentrating throughout the day? Yes, no, or sometimes?","Have you been sleeping more or less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can’t stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
     care_recipient = {"address": "11650 National Boulevard, Los Angeles, California 90064, United States",
     "dateOfBirth": "1954-04-11",
     "dependentStatus": "Not a child/dependent",
