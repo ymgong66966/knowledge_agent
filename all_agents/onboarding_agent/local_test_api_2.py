@@ -4,7 +4,7 @@ from langgraph.errors import GraphInterrupt
 from langchain_core.messages import HumanMessage
 
 # Use the thread_id from local_test_api.py
-thread_id = "97d26d32-f1a8-4739-8767-377c887c9fb6"  # Replace with your actual thread_id
+thread_id = "cb126191-7f0a-4044-99e6-3901d641e999"  # Replace with your actual thread_id
 
 config = {"configurable": {"thread_id": thread_id}}
 print(f"Using Thread ID: {thread_id}")
@@ -30,7 +30,7 @@ def main():
         print(f"Current tree: {state.values.get('current_tree', 'N/A')}")
         
         # Prepare the new message
-        new_message = HumanMessage(content="no")
+        new_message = HumanMessage(content="No")
         # I need to figure out the medicaid benefits for my dad
         
         # Update state with new message

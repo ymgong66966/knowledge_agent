@@ -1,20 +1,34 @@
+# from google import genai
+# # from pydantic import BaseModel, create_model
+# # from langchain_core.pydantic_v1 import BaseModel, Field
+# from pydantic import BaseModel, Field, ConfigDict
+# from typing import List, Optional, Type, TypedDict
+# import os
+# from dotenv import load_dotenv
+# load_dotenv()
+# from openai import OpenAI
+# import random
+# # from pydantic import BaseModel
+# from typing import TypedDict, Optional, Annotated, List
+# from langgraph.graph import StateGraph, START, END
+# from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+# from typing import Any
+# from langgraph.checkpoint.memory import MemorySaver
+# import json
+# from langchain_core.messages import AIMessage, AnyMessage
+
 from google import genai
-# from pydantic import BaseModel, create_model
-from langchain_core.pydantic_v1 import BaseModel, Field
-from typing import List, Optional, Type, TypedDict
+from pydantic import BaseModel, Field, ConfigDict
+from typing import List, Optional, Type, TypedDict, Annotated, Any
 import os
 from dotenv import load_dotenv
-load_dotenv()
 from openai import OpenAI
 import random
-# from pydantic import BaseModel
-from typing import TypedDict, Optional, Annotated, List
+
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
-from typing import Any
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, AnyMessage
 from langgraph.checkpoint.memory import MemorySaver
 import json
-from langchain_core.messages import AIMessage, AnyMessage
 # test
 memory = MemorySaver()
 
@@ -36,15 +50,18 @@ class carerecipient_info(BaseModel):
     gender: str
     
 class GraphState(BaseModel):
+
+    # model_config = ConfigDict(arbitrary_types_allowed=True)
+
     question: Optional[str] = Field(default=None)
     options: Optional[dict[str, str]] = Field(default=None)
-    tasks: list[str] = Field(default_factory=list)
+    tasks: list[str] = Field(default= [])
     node: str = Field(default="root")
     user_response: Optional[str] = Field(default=None)
-    chat_history: list[BaseMessage] = Field(default_factory=list)
+    chat_history: list= Field(default= [])
     # to_user: Optional[BaseMessage]
     next_step: Optional[str] = Field(default=None)
-    real_chat_history: Optional[list[AnyMessage]] = Field(default=[])
+    real_chat_history: Optional[list] = Field(default=[])
     last_step: Optional[str] = Field(default=None)
     current_tree: str = Field(default="")
     route: Optional[str] = Field(default="onboarding")
@@ -364,10 +381,10 @@ class LegalDocumentsAssessmentTree:
 
         # ---------- Root (exact wording you requested; presents the (a) question directly)
         self.root = self._register_node(LegalDocumentsNode(
-            question=("You’re doing great. Just a few more questions so I can tailor the right support for you.\n"
+            question=("You’re doing great. Just a few more questions so I can tailor the right support for you.\n\n"
                       "A comprehensive estate plan is very important to have completed so that @name’s wishes can be honored. "
                       "This plan can include a will, a trust, power of attorney, and advanced healthcare directives. I’d like to know "
-                      "if I can help you with these documents. And again, anything you share will only be used to support your care.\n"
+                      "if I can help you with these documents. And again, anything you share will only be used to support your care.\n\n"
                       "Does @name have an attorney to help with estate planning?"),
             options={
                 "Yes": "a_yes_ack",
@@ -1587,7 +1604,8 @@ def assess_mental(state: GraphState, question_ls: list):
 
 
 def routing_node(state: GraphState):
-    print(state.route,"[[[[[[[[[[]]]]]]]]]]")
+    print("[[[[[[[[[[]]]]]]]]]]")
+    print(state.route)
     if state.route == "mental":
         return {"route_node": "assess_mental"}
     else:
@@ -1602,11 +1620,10 @@ def parse_response(state: GraphState, tree_dict: dict):
     client = genai.Client(api_key=get_gemini_api_key())
     user_response = ""
     tasks = state.tasks
-    
     for message in reversed(state.real_chat_history):
-        if isinstance(message, HumanMessage):
-            user_response = message.content + user_response
-        elif isinstance(message, AIMessage):
+        if message["type"] == "human":
+            user_response = message["content"] + user_response
+        elif message["type"] == "ai":
             break
 
     if state.direct_record_answer:
@@ -1673,6 +1690,8 @@ def parse_response(state: GraphState, tree_dict: dict):
     # print("options", options)
 
     print("all_questions", all_questions)
+    print("user_response", user_response)
+
     prompt = f"""System: we have a series of questions to ask the user to help them onboard. Your input contains four things: user response, current question, options, and later questions. Your job is to understand the user's response to your current question, and return one of the options you are given that best represent the user's response. At the same time, you need to look at the later questions and return a "has_additional_info" flag indicating if there is additional information in the user's response that can answer later questions. The "has_additional_info" is either "True" or "False". If the user's response has information to answer one of the later questions, then you must return "True" as the value for "has_additional_info". If the user's response has no information to answer any of the later questions, then you must return "False" as the value for "has_additional_info". 
     Important: never return "answer not found" as the option when the user response is a simple yes or no, instead return the option that best represent the user's response.
 

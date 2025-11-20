@@ -1,7 +1,7 @@
 from langgraph_sdk import get_sync_client, get_client
 from langgraph.pregel.remote import RemoteGraph
 from langgraph.errors import GraphInterrupt
-
+from langchain_core.messages import AIMessage, HumanMessage
 def main():
     # Configure your LOCAL dev server
     url = "http://localhost:2024"
@@ -33,7 +33,7 @@ def main():
                 },
                 {
                     "type": "human",
-                    "content": "I do not feel very good today. I feel a bit down"
+                    "content": "I do not feel good today. I feel a bit down"
                 }
             ],
             "last_step": "start",
@@ -51,7 +51,7 @@ def main():
                 "relationship": "dad",
                 "veteranStatus": "Veteran"
             },
-            # "direct_record_answer": False
+            "direct_record_answer": False
         }, config=config)
         
         print("\n" + "="*50)
