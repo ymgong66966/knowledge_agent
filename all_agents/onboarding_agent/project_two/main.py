@@ -472,7 +472,7 @@ class MedicaidAssessmentTree:
         apply_medicaid_leaf = self._register_node(
             MedicaidAssessmentNode(
                 question=(
-                    "I can help you enroll in Medicaid and will send more information after we finish onboarding."
+                    "I can help @name enroll in Medicaid and will send more information after we finish onboarding."
                 ),
                 tasks=["Apply to Medicaid"],
                 leaf_node="leaf",
