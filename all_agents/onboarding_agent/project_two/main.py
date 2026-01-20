@@ -1696,7 +1696,7 @@ def parse_response(state: GraphState, tree_dict: dict):
     Important: never return "answer not found" as the option when the user response is a simple yes or no, instead return the option that best represent the user's response.
 
     Note that there are three scenarios:
-    1. The user's response is sufficient for you to pick one option as answer to the current question.
+    1. The user's response is sufficient for you to pick one option as answer to the current question. Important: in this scenario, you will have to chooose from the options you are given. No improvising or making up options like "i'm not sure" or "i don't know". Important: in this scenario, you will have to chooose from the options you are given. No improvising or making up options like "i'm not sure" or "i don't know".
 
     Here is an example:
     current question: "Does @name live in this home alone or with others?"
@@ -1994,7 +1994,7 @@ def create_graph():
     "ERVisitAssessmentTree":ERVisitAssessmentTree(),
     "EndOfLifeCareTree":EndOfLifeCareTree(), 
     "CopingAssessmentTree":CopingAssessmentTree()}
-    mental_health_questions_ls = ["Do you have trouble concentrating throughout the day? Yes, no, or sometimes?","Have you been sleeping more or less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can’t stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
+    mental_health_questions_ls = ["Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?","Do you have trouble concentrating throughout the day? Yes, no, or sometimes?","Have you been sleeping more or less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can’t stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
     care_recipient = {"address": "11650 National Boulevard, Los Angeles, California 90064, United States",
     "dateOfBirth": "1954-04-11",
     "dependentStatus": "Not a child/dependent",
