@@ -649,7 +649,7 @@ class MedicareAssessmentTree:
         ), "not_enrolled")
         
         not_eligible = self._register_node(MedicareAssessmentNode(
-            question="No worries, we can explore what other benefits or resources @name might be eligible for.",
+            question="No worries, we can explore what other benefits or resources @name might be eligible for.\n\n",
             tasks=[],
             leaf_node="leaf"
         ), "not_eligible")
@@ -1503,11 +1503,9 @@ class CopingAssessmentTree:
         ), "leaf_thanks_close")
 
         # ---- First Coping Question (Yes path)
-        # You can later extend this node with options or a path to subsequent questions in the series.
+        # This node transitions to the mental assessment questions
         coping_q1 = self._register_node(CopingNode(
-            question="Do you have trouble concentrating throughout the day?",
-            # No options specified yet in your spec; expects an answer your UI will collect.
-            # You can wire a `path` here later to auto-advance to the next coping question.
+            question="Great, let's continue.",
             tasks=[],
             leaf_node="leaf"
         ), "coping_q1")
@@ -1856,8 +1854,8 @@ def ask_to_repeat(state: GraphState):
     return {"real_chat_history": new_history, "question": "I'm sorry, I didn't understand that. Please try again.", "next_step": None}
         
 def completed_onboarding(state: GraphState):
-    new_history = state.real_chat_history + [AIMessage(content="Have you been sleeping more or less often than usual? Yes, no, or sometimes?")]
-    return {"real_chat_history": new_history, "question": "Have you been sleeping more or less often than usual? Yes, no, or sometimes?", "chat_history": state.chat_history + [AIMessage(content="Have you been sleeping more or less often than usual? Yes, no, or sometimes?")], "route": "mental", "mental_question": "Have you been sleeping more or less often than usual? Yes, no, or sometimes?"}
+    new_history = state.real_chat_history + [AIMessage(content="Have you been sleeping less often than usual? Yes, no, or sometimes?")]
+    return {"real_chat_history": new_history, "question": "Have you been sleeping less often than usual? Yes, no, or sometimes?", "chat_history": state.chat_history + [AIMessage(content="Have you been sleeping less often than usual? Yes, no, or sometimes?")], "route": "mental", "mental_question": "Have you been sleeping less often than usual? Yes, no, or sometimes?"}
 
 async def short_completed_node(state: GraphState):
     new_history = state.real_chat_history + [AIMessage(content="Thank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!")]
@@ -1889,9 +1887,6 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     # current_question = "Is there any immediate need I can support you with right now in regards to @name's care?"
     # chat_history = [AIMessage(content="Is your dad eligible for Medicaid? Medicaid is a government program that provides healthcare coverage for low-income individuals.", role="assistant"), HumanMessage(content="Yes, he is", role="user")]
     # chat_history = []
-    if state.route == "mental" and state.question=="Do you have trouble concentrating throughout the day? Yes, no, or sometimes?":
-        return {"question": state.question,"mental_question": state.question, "real_chat_history": state.real_chat_history + [AIMessage(content=state.question)], "last_step":"start", "directly_ask": directly_ask}
-        
     directly_ask = False
     if state.directly_ask:
         current_question = state.question
@@ -1904,9 +1899,14 @@ def ask_next_question(state: GraphState, tree_dict: dict):
         elif state.node == "root":
             current_question = state.question + "\n" + current_question
     real_chat_history = state.real_chat_history
-    ask_template = f"""System: your job is to ask the question to the care giver to help them onboard. Your input includes a question, the chat history, and the care recipient information. 
+    ask_template = f"""System: your job is to ask the question to the care giver to help them onboard. Your input includes a question, the chat history, and the care recipient information.
 
-    You need to undertstand the relationship between the care giver you are talking to and the care recipient. Refer to the care recipient based on the relationship. If the relationship is "self" then refer to the care recipient as you. Also look at the background information in chat history, formulate the question accordingly.
+    You need to undertstand the relationship between the care giver you are talking to and the care recipient. Refer to the care recipient based on the relationship. Also look at the background information in chat history, formulate the question accordingly.
+
+    IMPORTANT: Check the "isSelf" field in the care recipient information:
+    - If "isSelf" is true, the caregiver IS the care recipient (they are caring for themselves). You MUST use second-person grammar: "you", "your", "Are you...", "Do you...", "Have you..." etc.
+    - If "isSelf" is false, use third-person grammar based on the relationship: "your dad", "your brother", "Is your dad...", "Does your brother..." etc.
+
     #####
     Example inputs 1:
     The care recipient information:
@@ -1949,9 +1949,31 @@ def ask_next_question(state: GraphState, tree_dict: dict):
     Chat history: [AIMessage(content="Does your dad have a will, living will, or power of attorney in place?", role="assistant"), HumanMessage(content="No he doesn't", role="user")]
 
     Example output 2:
-     The output question you need to ask is: It will be important to work with your dad and an attorney to complete these documents as soon as possible. We will add this to your Task list with more instructions once the onboarding process is complete. Is your dad eligible for Medicare? Medicare is a federal health insurance program for those aged 65 or older, or who have a qualifying disability or diagnosis of end-stage kidney disease or ALS. 
+     The output question you need to ask is: It will be important to work with your dad and an attorney to complete these documents as soon as possible. We will add this to your Task list with more instructions once the onboarding process is complete. Is your dad eligible for Medicare? Medicare is a federal health insurance program for those aged 65 or older, or who have a qualifying disability or diagnosis of end-stage kidney disease or ALS.
 
-     Important Note: In the input question, if there are sentences before or after the question sentence, make sure to include them and polish them so that @name is replaced with proper language.
+    Example input 3 (isSelf or IsSelf is true (the specific spelling may differ a little bit) - caregiver is the care recipient):
+    The care recipient information:
+    {{
+  "address": "123 Main Street, New York, NY 10001, United States",
+  "dateOfBirth": "1960-05-15",
+  "dependentStatus": "Not a child/dependent",
+  "firstName": "Sarah",
+  "gender": "Female",
+  "isSelf": true,
+  "lastName": "Johnson",
+  "legalName": "Sarah Johnson",
+  "pronouns": "she/her/hers",
+  "relationship": "Self",
+  "veteranStatus": "Not a veteran"
+}}
+    Input question: Is @name eligible for Medicaid? Does @name have an attorney to help with estate planning?
+
+    Chat history: []
+
+    Example output 3:
+    The output question you need to ask is: Are you eligible for Medicaid? Do you have an attorney to help with estate planning?
+
+     Important Note: In the input question, if there are sentences before or after the question sentence, make sure to include them and polish them so that @name is replaced with proper language. When isSelf is true, always use second-person pronouns (you, your) and correct verb forms (are you, do you, have you) instead of third-person forms.
 
     #### Below is the real input. 
     The care recipient information:
@@ -1994,7 +2016,7 @@ def create_graph():
     "ERVisitAssessmentTree":ERVisitAssessmentTree(),
     "EndOfLifeCareTree":EndOfLifeCareTree(), 
     "CopingAssessmentTree":CopingAssessmentTree()}
-    mental_health_questions_ls = ["Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?","Do you have trouble concentrating throughout the day? Yes, no, or sometimes?","Have you been sleeping more or less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can’t stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
+    mental_health_questions_ls = ["Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?","Have you been sleeping less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can't stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
     care_recipient = {"address": "11650 National Boulevard, Los Angeles, California 90064, United States",
     "dateOfBirth": "1954-04-11",
     "dependentStatus": "Not a child/dependent",
@@ -2033,7 +2055,7 @@ graph = create_graph()
 #     memory = MemorySaver()
 #     builder = StateGraph(GraphState)
 #     tree_dict = {"HousingAssessmentTree":HousingAssessmentTree(), "VeteranAssessmentTree":VeteranAssessmentTree()}
-#     mental_health_questions_ls = ["Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?", "Have you been sleeping more or less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can’t stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
+#     mental_health_questions_ls = ["Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?", "Have you been sleeping less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can’t stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
 #     care_recipient = {"address": "11650 National Boulevard, Los Angeles, California 90064, United States",
 #   "dateOfBirth": "1954-04-11",
 #   "dependentStatus": "Not a child/dependent",
