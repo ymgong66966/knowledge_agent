@@ -21,6 +21,7 @@ from google import genai
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Type, TypedDict, Annotated, Any
 import os
+import logging
 from dotenv import load_dotenv
 from openai import OpenAI
 import random
@@ -29,6 +30,8 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, AnyMessage
 from langgraph.checkpoint.memory import MemorySaver
 import json
+
+_logger = logging.getLogger(__name__)
 # test
 memory = MemorySaver()
 
@@ -70,6 +73,7 @@ class GraphState(BaseModel):
     assessment_score: Optional[int] = Field(default=0)
     assessment_answer: Optional[list[AnyMessage]] = Field(default=[])
     care_recipient: Optional[dict] = Field(default={})
+    user_id: Optional[str] = Field(default=None)
     completed_whole_process: Optional[bool] = Field(default=False)
     short_completed: Optional[bool] = Field(default=False)
     direct_record_answer: Optional[bool] = Field(default=False)
@@ -1853,14 +1857,89 @@ def ask_to_repeat(state: GraphState):
     new_history = state.real_chat_history + [AIMessage(content="I'm sorry, I didn't understand that. Please try again.")]
     return {"real_chat_history": new_history, "question": "I'm sorry, I didn't understand that. Please try again.", "next_step": None}
         
+WITHCARE_AGENT_URL = os.getenv("WITHCARE_AGENT_URL", "")
+
+
+async def _send_onboarding_to_withcare(state: GraphState) -> None:
+    """Post completed onboarding data to WithCare agent for fact ingestion.
+
+    Sends care_recipient data, assessment results, and accumulated tasks
+    to the /onboarding/ingest endpoint. Non-fatal on failure — the
+    onboarding flow completes regardless.
+    """
+    if not WITHCARE_AGENT_URL:
+        _logger.warning("WITHCARE_AGENT_URL not set, skipping onboarding ingest")
+        return
+    if not state.user_id:
+        _logger.warning("No user_id in state, skipping onboarding ingest")
+        return
+
+    care_recipient = state.care_recipient or {}
+    relationship = care_recipient.get("relationship", "")
+
+    # Build assessment answers from the Q&A history
+    assessment_answers = None
+    if state.assessment_answer:
+        mental_questions = [
+            "concentration", "sleep", "isolation",
+            "lost_interest", "anxiety", "depression",
+        ]
+        answers = []
+        q_idx = 0
+        for msg in state.assessment_answer:
+            content = msg.content if hasattr(msg, "content") else str(msg)
+            role = "ai" if isinstance(msg, AIMessage) else "human"
+            if role == "human" and q_idx < len(mental_questions):
+                answers.append({
+                    "question": mental_questions[q_idx],
+                    "answer": content.strip().lower(),
+                })
+                q_idx += 1
+        if answers:
+            assessment_answers = answers
+
+    payload = {
+        "user_id": state.user_id,
+        "care_recipients": [
+            {
+                "relationship": relationship,
+                "data": care_recipient,
+            }
+        ] if care_recipient else [],
+        "assessment_score": state.assessment_score if state.assessment_score else None,
+        "assessment_answers": assessment_answers,
+        "tasks": state.tasks if state.tasks else None,
+    }
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{WITHCARE_AGENT_URL}/onboarding/ingest",
+                json=payload,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            _logger.info(
+                f"Onboarding ingest for {state.user_id}: "
+                f"{result.get('total_facts_written', 0)} facts written"
+            )
+    except Exception as e:
+        _logger.error(f"Onboarding ingest failed (non-fatal): {e}")
+
+
 def completed_onboarding(state: GraphState):
     new_history = state.real_chat_history + [AIMessage(content="Have you been sleeping less often than usual? Yes, no, or sometimes?")]
     return {"real_chat_history": new_history, "question": "Have you been sleeping less often than usual? Yes, no, or sometimes?", "chat_history": state.chat_history + [AIMessage(content="Have you been sleeping less often than usual? Yes, no, or sometimes?")], "route": "mental", "mental_question": "Have you been sleeping less often than usual? Yes, no, or sometimes?"}
 
 async def short_completed_node(state: GraphState):
-    new_history = state.real_chat_history + [AIMessage(content="Thank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!")]
-    question = "Thank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!"
-    chat_history = state.chat_history + [AIMessage(content="Thank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!")]
+    new_history = state.real_chat_history + [AIMessage(content="Thank you, those are all of the questions I have! I'll send a message to you soon about your care plan tasks and next steps!")]
+    question = "Thank you, those are all of the questions I have! I'll send a message to you soon about your care plan tasks and next steps!"
+    chat_history = state.chat_history + [AIMessage(content="Thank you, those are all of the questions I have! I'll send a message to you soon about your care plan tasks and next steps!")]
+
+    # Send onboarding data to WithCare agent (non-fatal)
+    await _send_onboarding_to_withcare(state)
+
     return {"real_chat_history": new_history, "question":question, "chat_history": chat_history, "completed_whole_process": True}
 
 async def completed_whole(state: GraphState):
@@ -1877,6 +1956,9 @@ async def completed_whole(state: GraphState):
         new_history = state.real_chat_history + [AIMessage(content="Your answers indicate that you may be experiencing a high level of caregiver burnout. Check in with your own medical provider or primary care doctor if you need more support, and you can ask me for assistance with finding additional resources such as support groups or individual therapists. \n\nThank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!")]
         question = "Your answers indicate that you may be experiencing a high level of caregiver burnout. Check in with your own medical provider or primary care doctor if you need more support, and you can ask me for assistance with finding additional resources such as support groups or individual therapists. \n\nThank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!"
         chat_history = state.chat_history + [AIMessage(content="Your answers indicate that you may be experiencing a high level of caregiver burnout. Check in with your own medical provider or primary care doctor if you need more support, and you can ask me for assistance with finding additional resources such as support groups or individual therapists. \n\nThank you, those are all of the questions I have! I’ll send a message to you soon about your care plan tasks and next steps!")]
+
+    # Send onboarding data to WithCare agent (non-fatal)
+    await _send_onboarding_to_withcare(state)
 
     return {"real_chat_history": new_history, "question":question, "chat_history": chat_history, "completed_whole_process": True}
 
