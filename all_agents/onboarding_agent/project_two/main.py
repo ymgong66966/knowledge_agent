@@ -81,6 +81,7 @@ class GraphState(BaseModel):
     care_time: Optional[bool] = Field(default=False)
     veteranStatus: Optional[str] = Field(default="Not a veteran")
     greeting_message: Optional[str] = Field(default=None)
+    initial_request_qa: Optional[dict] = Field(default=None)  # {"question": "...", "answer": "..."}
 
 class IntroNode:
     def __init__(self, question, options=None, tasks=None, condition=None,
@@ -1661,12 +1662,14 @@ def parse_response(state: GraphState, tree_dict: dict):
             has_task = response_json.get("has_task", "False")
             print("parsed response: ", response_json)
             task = response_json.get("task", "None")
+            # Capture the intro Q&A pair for the greeting prompt
+            intro_qa = {"question": "Is there anything specific about their care you need help figuring out or getting started on today?", "answer": user_response}
             if has_task.lower() == "true":
                 tasks.append(task)
-                current_question = "Thanks for letting me know, I will mark this as top priority for the care plan. And I’ll start on it after onboarding." + "\n\n" + "Next, I am going to ask you a series of questions about @name’s care to better understand your situation and how I can best support you. \nYou are not required to answer anything you aren’t comfortable with, and anything you do answer is confidential and only used to help me provide the best assistance. \nHow long have you been providing care to @name?"
+                current_question = "Thanks for letting me know, I will mark this as top priority for the care plan. And I'll start on it after onboarding." + "\n\n" + "Next, I am going to ask you a series of questions about @name's care to better understand your situation and how I can best support you. \nYou are not required to answer anything you aren't comfortable with, and anything you do answer is confidential and only used to help me provide the best assistance. \nHow long have you been providing care to @name?"
             else:
-                current_question = "No problem! You can always reach out to me anytime you need help or have a question!" + "\n\n" + "Next, I am going to ask you a series of questions about @name’s care to better understand your situation and how I can best support you. \nYou are not required to answer anything you aren’t comfortable with, and anything you do answer is confidential and only used to help me provide the best assistance. \nHow long have you been providing care to @name?"
-            return {"next_step": "ask_next_question", "last_step": "start", "question": current_question, "chat_history": chat_history + [HumanMessage(content=user_response),AIMessage(content=current_question)], "tasks": tasks, "care_time": True, "directly_ask": True, "node": "root", "current_tree": "MedicareAssessmentTree"}
+                current_question = "No problem! You can always reach out to me anytime you need help or have a question!" + "\n\n" + "Next, I am going to ask you a series of questions about @name's care to better understand your situation and how I can best support you. \nYou are not required to answer anything you aren't comfortable with, and anything you do answer is confidential and only used to help me provide the best assistance. \nHow long have you been providing care to @name?"
+            return {"next_step": "ask_next_question", "last_step": "start", "question": current_question, "chat_history": chat_history + [HumanMessage(content=user_response),AIMessage(content=current_question)], "tasks": tasks, "care_time": True, "directly_ask": True, "node": "root", "current_tree": "MedicareAssessmentTree", "initial_request_qa": intro_qa}
         else:
             print("get_care_time")
             current_question = "Okay, thank you for sharing that.\n\nLet’s talk about Medicare, the federal health insurance program. \n\n[Is @name]/[Are you] eligible for Medicare?\n"
@@ -1958,6 +1961,7 @@ def _generate_greeting_message(state: GraphState) -> str:
     care_recipient = state.care_recipient or {}
     tasks = state.tasks or []
     chat_history = state.chat_history or []
+    initial_qa = state.initial_request_qa or {}
 
     # Build context from care recipient info
     cr_name = care_recipient.get("firstName", "your loved one")
@@ -1978,6 +1982,17 @@ def _generate_greeting_message(state: GraphState) -> str:
 
     tasks_str = "\n".join(f"- {t}" for t in tasks) if tasks else "No specific tasks identified yet."
 
+    # Build the initial request context
+    initial_request_context = ""
+    if initial_qa:
+        initial_request_context = f"""
+## When asked if there's anything they need help with right away, this is what happened:
+Q: "{initial_qa.get('question', '')}"
+A: "{initial_qa.get('answer', '')}"
+"""
+    else:
+        initial_request_context = "\n## They were not asked about immediate needs, or the answer wasn't captured.\n"
+
     prompt = f"""You're a friendly care coordinator chatting with a caregiver who just finished onboarding. Write the first message they'll see in the chat — like a warm text from a supportive friend, NOT a formal letter or corporate email.
 
 ## Their situation:
@@ -1985,7 +2000,7 @@ def _generate_greeting_message(state: GraphState) -> str:
 - Born {cr_dob}, {cr_gender} ({cr_pronouns})
 - Lives at {cr_address}
 - Veteran status: {cr_veteran}
-
+{initial_request_context}
 ## What they shared during onboarding:
 {history_summary[-2000:]}
 
@@ -1994,23 +2009,27 @@ def _generate_greeting_message(state: GraphState) -> str:
 
 ## HOW TO WRITE THIS (follow these rules exactly):
 
-1. START by acknowledging their effort. If they mentioned how long they've been caregiving, celebrate that. Something like "Five years of showing up for your dad every day — that's huge." Make them feel SEEN and appreciated.
+1. START by acknowledging their effort. If they mentioned how long they've been caregiving, celebrate that genuinely. Caregiving for years is incredibly hard and they deserve real recognition for showing up every day. Make them feel SEEN.
 
-2. Be genuinely encouraging and positive. They're doing something incredible and hard. Lead with what they're doing right.
+2. Be genuinely encouraging and positive. Lead with what they're doing right, not what's missing.
 
-3. Slip in 1-2 helpful insights naturally — like a friend who happens to know stuff. If veteran: "oh by the way, since your dad served, there are some VA caregiver support programs that could really help." If Medicaid: "good news is Medicaid can cover a lot of the in-home care costs." Make it feel like a helpful tip, not a report.
+3. Look at the "asked if there's anything they need help with right away" section above. This is important:
+   - If they DID state a specific need (like finding a physical therapist, or figuring out insurance), that's their TOP PRIORITY. Acknowledge it directly and naturally — they told you this matters to them, so show you heard it and it's at the top of your list.
+   - If they said "no" or "not really" or anything vague, just skip this — don't mention it at all.
 
-4. At the end, casually mention one task to start with and why it makes sense. Keep it breezy: "I'd say we start with checking out those VA benefits — want to look into that?" NOT "Would you like me to help you get started with the VA benefits assessment?"
+4. Slip in 1-2 helpful insights naturally, like a knowledgeable friend sharing tips. If they're a veteran's caregiver, mention VA programs casually. If they're on Medicaid, mention coverage options. Make it feel like helpful advice, not a report.
 
-5. Keep it SHORT — 2-3 paragraphs, conversational length. Like a text message, not an essay.
+5. Toward the end, briefly mention the other tasks you've noted from onboarding. Then, instead of picking one task for them, give a light recommendation of what might make sense to start with and WHY (e.g., "tackling the VA benefits first could unlock some of the other things on the list"), and then ask THEM what they'd like to start with. Let them choose — don't decide for them.
+
+6. Keep it SHORT — 2-3 paragraphs, conversational length.
 
 ## HARD RULES:
 - NO "Your WithCare Navigator" or ANY sign-off. Just end naturally.
 - NO bullet points, numbered lists, or markdown formatting.
-- NO mechanical restating of facts. Weave info into natural speech.
+- NO mechanical restating of facts. Weave info into natural conversation.
 - NO corporate language. No "I understand you're caring for..." or "Based on what you shared..."
 - Use contractions (you're, we'll, that's). Sound human.
-- End with a casual question about getting started, like talking to a friend.
+- End with an open question about what they'd like to tackle first — give them the choice.
 
 Respond with ONLY the message text."""
 
