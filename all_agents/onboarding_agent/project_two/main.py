@@ -1978,43 +1978,46 @@ def _generate_greeting_message(state: GraphState) -> str:
 
     tasks_str = "\n".join(f"- {t}" for t in tasks) if tasks else "No specific tasks identified yet."
 
-    prompt = f"""You are WithCare Navigator, an AI care coordinator trained by licensed clinicians to support caregivers 24/7.
+    prompt = f"""You're a friendly care coordinator chatting with a caregiver who just finished onboarding. Write the first message they'll see in the chat — like a warm text from a supportive friend, NOT a formal letter or corporate email.
 
-A caregiver just completed their onboarding assessment. Write a warm, personalized greeting message that will appear when they first open the WithCare Navigator chat. This is the beginning of your ongoing relationship with them.
+## Their situation:
+- Caring for their {cr_relationship}, {cr_name}
+- Born {cr_dob}, {cr_gender} ({cr_pronouns})
+- Lives at {cr_address}
+- Veteran status: {cr_veteran}
 
-## Care Recipient Information:
-- Name: {cr_name}
-- Relationship to caregiver: {cr_relationship}
-- Date of Birth: {cr_dob}
-- Gender: {cr_gender} ({cr_pronouns})
-- Location: {cr_address}
-- Veteran Status: {cr_veteran}
-
-## Conversation During Onboarding (key exchanges):
+## What they shared during onboarding:
 {history_summary[-2000:]}
 
-## Tasks Identified During Onboarding:
+## Tasks we identified together:
 {tasks_str}
 
-## Guidelines:
-- Open with a warm, personal greeting that acknowledges them by their caregiving role (e.g., "caring for your {cr_relationship}")
-- Provide 2-3 sentences of expert-level insights based on what was shared during onboarding. For example:
-  - If they're a veteran, mention VA caregiver support programs or benefits they may qualify for
-  - If Medicare/Medicaid came up, touch on coverage implications for their care needs
-  - If living situation suggests isolation or need for support, acknowledge that
-- Include a brief empathetic acknowledgment of the caregiving journey — you understand this is both meaningful and demanding
-- End by presenting the identified tasks as a care plan starting point. Recommend which task to start with and why. Ask if they'd like to begin working on one together.
-- Do NOT just list facts back at them — synthesize into a natural, supportive narrative
-- Keep it to 3-4 short paragraphs max
-- Do NOT use markdown headers or bullet points — write in natural paragraphs
-- Sign off warmly as their WithCare Navigator
+## HOW TO WRITE THIS (follow these rules exactly):
 
-Respond with ONLY the greeting message text, nothing else."""
+1. START by acknowledging their effort. If they mentioned how long they've been caregiving, celebrate that. Something like "Five years of showing up for your dad every day — that's huge." Make them feel SEEN and appreciated.
+
+2. Be genuinely encouraging and positive. They're doing something incredible and hard. Lead with what they're doing right.
+
+3. Slip in 1-2 helpful insights naturally — like a friend who happens to know stuff. If veteran: "oh by the way, since your dad served, there are some VA caregiver support programs that could really help." If Medicaid: "good news is Medicaid can cover a lot of the in-home care costs." Make it feel like a helpful tip, not a report.
+
+4. At the end, casually mention one task to start with and why it makes sense. Keep it breezy: "I'd say we start with checking out those VA benefits — want to look into that?" NOT "Would you like me to help you get started with the VA benefits assessment?"
+
+5. Keep it SHORT — 2-3 paragraphs, conversational length. Like a text message, not an essay.
+
+## HARD RULES:
+- NO "Your WithCare Navigator" or ANY sign-off. Just end naturally.
+- NO bullet points, numbered lists, or markdown formatting.
+- NO mechanical restating of facts. Weave info into natural speech.
+- NO corporate language. No "I understand you're caring for..." or "Based on what you shared..."
+- Use contractions (you're, we'll, that's). Sound human.
+- End with a casual question about getting started, like talking to a friend.
+
+Respond with ONLY the message text."""
 
     try:
         client = genai.Client(api_key=get_gemini_api_key())
         response = client.models.generate_content(
-            model='gemini-2.0-flash-lite',
+            model='gemini-2.0-flash',
             contents=prompt,
         )
         greeting = response.text.strip()
