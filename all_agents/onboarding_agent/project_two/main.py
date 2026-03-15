@@ -80,6 +80,7 @@ class GraphState(BaseModel):
     directly_ask: Optional[bool] = Field(default=False)
     care_time: Optional[bool] = Field(default=False)
     veteranStatus: Optional[str] = Field(default="Not a veteran")
+    greeting_message: Optional[str] = Field(default=None)
 
 class IntroNode:
     def __init__(self, question, options=None, tasks=None, condition=None,
@@ -1834,8 +1835,8 @@ def parse_response(state: GraphState, tree_dict: dict):
                 
                 return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "tasks": tasks, "direct_record_answer": direct_record_answer, "directly_ask": directly_ask}
             else:
-                ### last question: copyingassessmenttree
-                return {"next_step": "ask_next_question", "question": current_question, "tasks": tasks, "direct_record_answer": direct_record_answer, "directly_ask": directly_ask,"chat_history": state.chat_history + [AIMessage(content=current_question)], "route": "mental"}
+                ### All trees exhausted — go directly to completion (no mental assessment)
+                return {"next_step": "short_completed", "question": current_question, "tasks": tasks, "direct_record_answer": direct_record_answer, "directly_ask": directly_ask, "chat_history": state.chat_history + [AIMessage(content=current_question)]}
 
 
         current_question = current_node.question
@@ -1933,14 +1934,103 @@ def completed_onboarding(state: GraphState):
     return {"real_chat_history": new_history, "question": "Have you been sleeping less often than usual? Yes, no, or sometimes?", "chat_history": state.chat_history + [AIMessage(content="Have you been sleeping less often than usual? Yes, no, or sometimes?")], "route": "mental", "mental_question": "Have you been sleeping less often than usual? Yes, no, or sometimes?"}
 
 async def short_completed_node(state: GraphState):
-    new_history = state.real_chat_history + [AIMessage(content="Thank you, those are all of the questions I have! I'll send a message to you soon about your care plan tasks and next steps!")]
-    question = "Thank you, those are all of the questions I have! I'll send a message to you soon about your care plan tasks and next steps!"
-    chat_history = state.chat_history + [AIMessage(content="Thank you, those are all of the questions I have! I'll send a message to you soon about your care plan tasks and next steps!")]
-
-    # Send onboarding data to WithCare agent (non-fatal)
+    # Send onboarding data to WithCare agent for fact ingestion (non-fatal)
     await _send_onboarding_to_withcare(state)
 
-    return {"real_chat_history": new_history, "question":question, "chat_history": chat_history, "completed_whole_process": True}
+    # ── Generate personalized greeting message via Gemini ──
+    greeting = _generate_greeting_message(state)
+
+    closing_text = "Thank you, those are all of the questions I have! Your WithCare Navigator is ready — you'll see a personalized message when you open the chat."
+    new_history = state.real_chat_history + [AIMessage(content=closing_text)]
+    chat_history = state.chat_history + [AIMessage(content=closing_text)]
+
+    return {
+        "real_chat_history": new_history,
+        "question": closing_text,
+        "chat_history": chat_history,
+        "completed_whole_process": True,
+        "greeting_message": greeting,
+    }
+
+
+def _generate_greeting_message(state: GraphState) -> str:
+    """Generate a personalized greeting message using Gemini based on onboarding data."""
+    care_recipient = state.care_recipient or {}
+    tasks = state.tasks or []
+    chat_history = state.chat_history or []
+
+    # Build context from care recipient info
+    cr_name = care_recipient.get("firstName", "your loved one")
+    cr_relationship = care_recipient.get("relationship", "care recipient")
+    cr_dob = care_recipient.get("dateOfBirth", "")
+    cr_address = care_recipient.get("address", "")
+    cr_veteran = care_recipient.get("veteranStatus", "")
+    cr_gender = care_recipient.get("gender", "")
+    cr_pronouns = care_recipient.get("pronouns", "")
+
+    # Extract key answers from chat history
+    history_summary = ""
+    for msg in chat_history:
+        content = msg.content if hasattr(msg, "content") else str(msg)
+        if content and len(content) > 5:
+            role = "User" if isinstance(msg, HumanMessage) else "AI"
+            history_summary += f"[{role}]: {content[:200]}\n"
+
+    tasks_str = "\n".join(f"- {t}" for t in tasks) if tasks else "No specific tasks identified yet."
+
+    prompt = f"""You are WithCare Navigator, an AI care coordinator trained by licensed clinicians to support caregivers 24/7.
+
+A caregiver just completed their onboarding assessment. Write a warm, personalized greeting message that will appear when they first open the WithCare Navigator chat. This is the beginning of your ongoing relationship with them.
+
+## Care Recipient Information:
+- Name: {cr_name}
+- Relationship to caregiver: {cr_relationship}
+- Date of Birth: {cr_dob}
+- Gender: {cr_gender} ({cr_pronouns})
+- Location: {cr_address}
+- Veteran Status: {cr_veteran}
+
+## Conversation During Onboarding (key exchanges):
+{history_summary[-2000:]}
+
+## Tasks Identified During Onboarding:
+{tasks_str}
+
+## Guidelines:
+- Open with a warm, personal greeting that acknowledges them by their caregiving role (e.g., "caring for your {cr_relationship}")
+- Provide 2-3 sentences of expert-level insights based on what was shared during onboarding. For example:
+  - If they're a veteran, mention VA caregiver support programs or benefits they may qualify for
+  - If Medicare/Medicaid came up, touch on coverage implications for their care needs
+  - If living situation suggests isolation or need for support, acknowledge that
+- Include a brief empathetic acknowledgment of the caregiving journey — you understand this is both meaningful and demanding
+- End by presenting the identified tasks as a care plan starting point. Recommend which task to start with and why. Ask if they'd like to begin working on one together.
+- Do NOT just list facts back at them — synthesize into a natural, supportive narrative
+- Keep it to 3-4 short paragraphs max
+- Do NOT use markdown headers or bullet points — write in natural paragraphs
+- Sign off warmly as their WithCare Navigator
+
+Respond with ONLY the greeting message text, nothing else."""
+
+    try:
+        client = genai.Client(api_key=get_gemini_api_key())
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-lite',
+            contents=prompt,
+        )
+        greeting = response.text.strip()
+        if greeting:
+            return greeting
+    except Exception as e:
+        _logger.warning(f"Gemini greeting generation failed, using fallback: {e}")
+
+    # Fallback greeting if LLM fails
+    task_mention = f" Based on what you shared, I've noted a few things we can work on together: {', '.join(tasks[:3])}." if tasks else ""
+    return (
+        f"Welcome to WithCare! I'm your Navigator, here to support you as you care for your {cr_relationship}, {cr_name}. "
+        f"Thank you for sharing so much during onboarding — it helps me understand your situation and how I can best help."
+        f"{task_mention} "
+        f"Whenever you're ready, just let me know what you'd like to start with, or feel free to ask me anything."
+    )
 
 async def completed_whole(state: GraphState):
     assess_score = state.assessment_score
@@ -2091,13 +2181,15 @@ def create_graph():
         "IntroAssessmentTree":IntroAssessmentTree(),
     "MedicareAssessmentTree":MedicareAssessmentTree(),
     "MedicaidAssessmentTree":MedicaidAssessmentTree(),
-    "VeteranAssessmentTree":VeteranAssessmentTree(), 
+    "VeteranAssessmentTree":VeteranAssessmentTree(),
     "LiveSituationAssessmentTree":LiveSituationAssessmentTree(),
-    "LegalDocumentsTree":LegalDocumentsAssessmentTree(), 
-    "HospitalizationAssessmentTree":HospitalizationAssessmentTree(),
-    "ERVisitAssessmentTree":ERVisitAssessmentTree(),
-    "EndOfLifeCareTree":EndOfLifeCareTree(), 
-    "CopingAssessmentTree":CopingAssessmentTree()}
+    # --- ARCHIVED: removed from active onboarding flow ---
+    # "LegalDocumentsTree":LegalDocumentsAssessmentTree(),
+    # "HospitalizationAssessmentTree":HospitalizationAssessmentTree(),
+    # "ERVisitAssessmentTree":ERVisitAssessmentTree(),
+    # "EndOfLifeCareTree":EndOfLifeCareTree(),
+    # "CopingAssessmentTree":CopingAssessmentTree(),
+    }
     mental_health_questions_ls = ["Next I am going to ask you some questions about how you have been managing in your role as a care provider. Do you have trouble concentrating? Yes, no, or sometimes?","Have you been sleeping less often than usual? Yes, no, or sometimes?", "Do you feel lonely or isolated? Yes, no, or sometimes?", "Have you lost interest in activities that you used to enjoy? Yes, no, or sometimes?", "Do you feel anxious, or like you can't stop worrying about things that might happen? Yes, no, or sometimes?", "Do you feel down, sad or depressed? Yes, no, or sometimes?"]
     care_recipient = {"address": "11650 National Boulevard, Los Angeles, California 90064, United States",
     "dateOfBirth": "1954-04-11",
