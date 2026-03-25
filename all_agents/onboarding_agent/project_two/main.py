@@ -82,6 +82,7 @@ class GraphState(BaseModel):
     veteranStatus: Optional[str] = Field(default="Not a veteran")
     greeting_message: Optional[str] = Field(default=None)
     initial_request_qa: Optional[dict] = Field(default=None)  # {"question": "...", "answer": "..."}
+    retry_count: Optional[int] = Field(default=0)
 
 class IntroNode:
     def __init__(self, question, options=None, tasks=None, condition=None,
@@ -1834,9 +1835,9 @@ def parse_response(state: GraphState, tree_dict: dict):
                 current_tree_name = list(tree_dict.keys())[idx]
                 if state.veteranStatus != "Veteran" and current_tree_name == "VeteranAssessmentTree":
                     current_tree_name = list(tree_dict.keys())[idx+1]
-                    return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "tasks": tasks, "direct_record_answer": direct_record_answer}
-                
-                return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "tasks": tasks, "direct_record_answer": direct_record_answer, "directly_ask": directly_ask}
+                    return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "tasks": tasks, "direct_record_answer": direct_record_answer, "retry_count": 0}
+
+                return {"current_tree": current_tree_name, "next_step": "ask_next_question", "last_step": "start", "node": "root", "question": current_question,"chat_history": chat_history, "tasks": tasks, "direct_record_answer": direct_record_answer, "directly_ask": directly_ask, "retry_count": 0}
             else:
                 ### All trees exhausted — go directly to completion (no mental assessment)
                 return {"next_step": "short_completed", "question": current_question, "tasks": tasks, "direct_record_answer": direct_record_answer, "directly_ask": directly_ask, "chat_history": state.chat_history + [AIMessage(content=current_question)]}
@@ -1845,21 +1846,162 @@ def parse_response(state: GraphState, tree_dict: dict):
         current_question = current_node.question
         options = current_node.options
         if has_additional_info.lower() == "true":
-            return {"node": node_id, "chat_history": chat_history, "tasks": tasks, "options": options, "question":current_question, "next_step": "parse_response", "last_step": "parse_response", "direct_record_answer": direct_record_answer, "directly_ask": directly_ask}
+            return {"node": node_id, "chat_history": chat_history, "tasks": tasks, "options": options, "question":current_question, "next_step": "parse_response", "last_step": "parse_response", "direct_record_answer": direct_record_answer, "directly_ask": directly_ask, "retry_count": 0}
         else:
-            return {"node": node_id, "chat_history": chat_history, "tasks": tasks, "options": options, "question":current_question, "next_step": "ask_next_question", "last_step": "parse_response", "direct_record_answer": direct_record_answer, "directly_ask": directly_ask}
+            return {"node": node_id, "chat_history": chat_history, "tasks": tasks, "options": options, "question":current_question, "next_step": "ask_next_question", "last_step": "parse_response", "direct_record_answer": direct_record_answer, "directly_ask": directly_ask, "retry_count": 0}
         # the node can be any node in the tree. Need to check if the node has options
     # if: 1. the node has options, then it must has question. then options = node.options
     # else: 2. the node has no options, then it must has path. then options = node.path
     # if there is a task list associated with the node, append it to the task field
-    elif response_dict["option"] == "answer not found" and state.last_step == "parse_response":
-        return {"next_step": "ask_next_question", "last_step": "start"}
-    elif response_dict["option"] == "answer not found" and state.last_step != "parse_response":
-        return {"next_step": "ask_to_repeat", "last_step": "start"}
+    elif response_dict["option"] == "answer not found":
+        if (state.retry_count or 0) >= 2:
+            # Max retries reached — select a safe default and advance
+            return {"next_step": "select_default", "last_step": "start"}
+        elif state.last_step == "parse_response":
+            # Auto-parse of additional info failed — just re-ask normally (no penalty)
+            return {"next_step": "ask_next_question", "last_step": "start"}
+        else:
+            # User's direct answer was unclear — ask for clarification with reasoning
+            return {"next_step": "ask_to_clarify", "last_step": "start"}
 
-def ask_to_repeat(state: GraphState):
-    new_history = state.real_chat_history + [AIMessage(content="I'm sorry, I didn't understand that. Please try again.")]
-    return {"real_chat_history": new_history, "question": "I'm sorry, I didn't understand that. Please try again.", "next_step": None}
+def ask_to_clarify(state: GraphState):
+    """Generate a concise, helpful explanation of why the answer couldn't be parsed."""
+    client = genai.Client(api_key=get_gemini_api_key())
+
+    current_question = state.question or ""
+    options = state.options or {}
+    user_response = ""
+    for msg in reversed(state.real_chat_history):
+        if isinstance(msg, dict) and msg.get("type") == "human":
+            user_response = msg["content"]
+            break
+        elif isinstance(msg, HumanMessage):
+            user_response = msg.content
+            break
+
+    option_keys = list(options.keys())
+
+    prompt = f"""The user was asked: "{current_question}"
+The valid answers are: {option_keys}
+The user responded: "{user_response}"
+
+Their answer doesn't clearly match any of the options. Write a brief, friendly
+message (2 sentences max) that:
+1. Explains specifically what was unclear — reference the actual options they need to choose from
+2. Re-asks the question naturally
+
+Do NOT say "I'm sorry" or "I didn't understand." Be warm and specific about what you need.
+Example: "I need to know if they live alone or with other people — which one is it?"
+
+Keep it conversational and concise."""
+
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-lite',
+            contents=prompt,
+        )
+        clarification = response.text.strip()
+        if not clarification:
+            raise ValueError("Empty response")
+    except Exception:
+        clarification = f"Could you clarify? I need one of these: {', '.join(option_keys)}"
+
+    new_history = state.real_chat_history + [AIMessage(content=clarification)]
+    return {
+        "real_chat_history": new_history,
+        "question": clarification,
+        "next_step": None,
+        "retry_count": (state.retry_count or 0) + 1,
+    }
+
+
+def _pick_default_option(options: dict) -> str:
+    """Pick the safest default option using a deterministic priority rule."""
+    option_keys = list(options.keys())
+    if not option_keys:
+        return "No"
+
+    # Priority: skip > unsure > don't know > no > first option
+    for pattern in ["don't want to answer", "not sure", "don't know"]:
+        for key in option_keys:
+            if pattern in key.lower():
+                return key
+    for key in option_keys:
+        if key.lower() == "no":
+            return key
+    return option_keys[0]
+
+
+def select_default(state: GraphState, tree_dict: dict):
+    """Pick a safe default option and advance the tree when max retries reached."""
+    options = state.options or {}
+    default = _pick_default_option(options)
+
+    tree = tree_dict.get(state.current_tree)
+    if not tree or not tree.get_node(state.node):
+        return {"next_step": "ask_next_question", "last_step": "start", "retry_count": 0}
+
+    current_tree_node = tree.get_node(state.node)
+    if not current_tree_node.options or default not in current_tree_node.options:
+        return {"next_step": "ask_next_question", "last_step": "start", "retry_count": 0}
+
+    # Walk the tree with the default option (same logic as parse_response success path)
+    node_id = current_tree_node.options[default]
+    current_node = tree.get_node(node_id)
+    tasks = list(state.tasks)
+    chat_history = list(state.chat_history)
+    chat_history += [AIMessage(content=state.question or ""), HumanMessage(content=default)]
+
+    while current_node.options is None:
+        if current_node.tasks:
+            tasks += current_node.tasks
+        path = current_node.path
+        if path is None:
+            break
+        current_node = tree.get_node(path)
+        node_id = path
+
+    message = f"No worries! I'll note that as \"{default}\" for now — you can always update this later. Let's move on."
+    new_history = state.real_chat_history + [AIMessage(content=message)]
+
+    if current_node.leaf_node == "leaf":
+        # End of this tree — move to next tree
+        if current_node.tasks:
+            tasks += current_node.tasks
+        leaf_question = current_node.question or ""
+        idx = list(tree_dict.keys()).index(state.current_tree) + 1
+        if idx < len(tree_dict):
+            next_tree_name = list(tree_dict.keys())[idx]
+            if state.veteranStatus != "Veteran" and next_tree_name == "VeteranAssessmentTree":
+                idx += 1
+                if idx < len(tree_dict):
+                    next_tree_name = list(tree_dict.keys())[idx]
+                else:
+                    return {"next_step": "completed_onboarding", "question": message, "tasks": tasks,
+                            "chat_history": chat_history, "real_chat_history": new_history, "retry_count": 0}
+            return {
+                "current_tree": next_tree_name, "next_step": "ask_next_question",
+                "last_step": "start", "node": "root",
+                "question": message + ("\n" + leaf_question if leaf_question else ""),
+                "chat_history": chat_history, "tasks": tasks,
+                "real_chat_history": new_history, "retry_count": 0,
+            }
+        else:
+            # Last tree — go to mental assessment
+            return {
+                "next_step": "ask_next_question", "question": message,
+                "tasks": tasks, "chat_history": chat_history + [AIMessage(content=message)],
+                "real_chat_history": new_history, "retry_count": 0, "route": "mental",
+            }
+
+    # Not a leaf — more questions in this tree
+    return {
+        "node": node_id, "chat_history": chat_history, "tasks": tasks,
+        "options": current_node.options,
+        "question": message + "\n" + current_node.question,
+        "next_step": "ask_next_question", "last_step": "start",
+        "retry_count": 0, "real_chat_history": new_history,
+    }
         
 WITHCARE_AGENT_URL = os.getenv("WITHCARE_AGENT_URL", "")
 
@@ -2225,7 +2367,8 @@ def create_graph():
     "relationship": "dad",
     "veteranStatus": "Veteran"}
     builder.add_node("parse_response", lambda state: parse_response(state, tree_dict))
-    builder.add_node("ask_to_repeat", ask_to_repeat)
+    builder.add_node("ask_to_clarify", ask_to_clarify)
+    builder.add_node("select_default", lambda state: select_default(state, tree_dict))
     builder.add_node("ask_next_question", lambda state: ask_next_question(state, tree_dict))
     builder.add_node("assess_mental", lambda state: assess_mental(state, mental_health_questions_ls))
     builder.add_node("router_node", routing_node)
@@ -2233,13 +2376,14 @@ def create_graph():
     builder.add_node("completed_whole", completed_whole)
     builder.add_node("short_completed_node", short_completed_node)
     builder.add_edge(START, "router_node")
-    builder.add_conditional_edges("parse_response", lambda x: x.next_step, {"ask_to_repeat": "ask_to_repeat", "ask_next_question": "ask_next_question", "parse_response": "parse_response", "completed_onboarding": "completed_onboarding", "short_completed": "short_completed_node"})
+    builder.add_conditional_edges("parse_response", lambda x: x.next_step, {"ask_to_clarify": "ask_to_clarify", "select_default": "select_default", "ask_next_question": "ask_next_question", "parse_response": "parse_response", "completed_onboarding": "completed_onboarding", "short_completed": "short_completed_node"})
     builder.add_conditional_edges("router_node", lambda x: x.route_node, {"assess_mental": "assess_mental", "parse_response": "parse_response"})
     builder.add_conditional_edges("assess_mental", lambda x: x.next_step, {END: END, "completed_whole": "completed_whole"})
     builder.add_edge("completed_whole", END)
     builder.add_edge("completed_onboarding", END)
 
-    builder.add_edge("ask_to_repeat", END)
+    builder.add_edge("ask_to_clarify", END)
+    builder.add_edge("select_default", END)
     builder.add_edge("ask_next_question", END)
     graph = builder.compile()  # Checkpointer removed for LangGraph API
 
