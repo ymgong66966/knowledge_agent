@@ -2000,7 +2000,7 @@ def select_default(state: GraphState, tree_dict: dict):
             return {
                 "current_tree": next_tree_name, "next_step": "ask_next_question",
                 "last_step": "start", "node": "root",
-                "question": message + ("\n" + leaf_question if leaf_question else ""),
+                "question": message,
                 "chat_history": chat_history, "tasks": tasks,
                 "real_chat_history": new_history, "retry_count": 0,
             }
@@ -2013,10 +2013,12 @@ def select_default(state: GraphState, tree_dict: dict):
             }
 
     # Not a leaf — more questions in this tree
+    # Set question to just the default message; ask_next_question will
+    # read the next question from the tree and personalize @name
     return {
         "node": node_id, "chat_history": chat_history, "tasks": tasks,
         "options": current_node.options,
-        "question": message + "\n" + current_node.question,
+        "question": message,
         "next_step": "ask_next_question", "last_step": "start",
         "retry_count": 0, "real_chat_history": new_history,
     }
