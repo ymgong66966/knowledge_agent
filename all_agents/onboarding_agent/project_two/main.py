@@ -1806,7 +1806,25 @@ def parse_response(state: GraphState, tree_dict: dict):
     # print("response_dict", response_dict)
     if response_dict["option"] != "answer not found":
         parsed_option = response_dict["option"]
+        # Normalize curly quotes/apostrophes to straight ones (LLM sometimes returns Unicode variants)
+        parsed_option = parsed_option.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"')
         has_additional_info = response_dict["has_additional_info"]
+
+        # Safety: if parsed option doesn't match any tree option, try case-insensitive match
+        current_options = tree.get_node(state.node).options or {}
+        if parsed_option not in current_options:
+            matched = next((k for k in current_options if k.lower() == parsed_option.lower()), None)
+            if matched:
+                parsed_option = matched
+            else:
+                # LLM returned an option that doesn't exist — treat as "answer not found"
+                if (state.retry_count or 0) >= 2:
+                    return {"next_step": "select_default", "last_step": "start"}
+                elif state.last_step == "parse_response":
+                    return {"next_step": "ask_next_question", "last_step": "start"}
+                else:
+                    return {"next_step": "ask_to_clarify", "last_step": "start"}
+
         chat_history += [AIMessage(content=current_question),HumanMessage(content=parsed_option)]
         # update the current node
         node_id = tree.get_node(state.node).options[parsed_option]
